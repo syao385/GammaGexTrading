@@ -5,6 +5,7 @@ let currentSymbol = 'SPY';
 let currentExpiration = 'all';
 let rawExpirations = [];
 let watchlist = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'TSLA', 'NVDA'];
+let seenAlerts = new Set();
 
 // Chart instances
 let gexStrikeChart = null;
@@ -451,8 +452,18 @@ function populateScreenerTable(items) {
     const tbody = document.querySelector('#screener-table tbody');
     tbody.innerHTML = '';
     
+    const newlyFiredAlerts = [];
+    const isFirstScan = (seenAlerts.size === 0);
+    
+    // Request notification permission if default
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
     items.forEach(row => {
         const tr = document.createElement('tr');
+        tr.className = 'screener-row';
+        tr.style.cursor = 'pointer';
         
         if (row.error) {
             tr.innerHTML = `<td class="text-bold">${row.symbol}</td><td colspan="9" class="text-red">${row.error}</td>`;
@@ -460,8 +471,21 @@ function populateScreenerTable(items) {
             return;
         }
         
+        // Process new alerts logic
+        if (row.alerts && row.alerts.length > 0) {
+            row.alerts.forEach(alertText => {
+                const alertKey = `${row.symbol}:${alertText}`;
+                if (!seenAlerts.has(alertKey)) {
+                    seenAlerts.add(alertKey);
+                    if (!isFirstScan) {
+                        newlyFiredAlerts.push(`[${row.symbol}] ${alertText}`);
+                    }
+                }
+            });
+        }
+        
         // Map elements
-        const sym = `<td class="text-bold">${row.symbol}</td>`;
+        const sym = `<td class="text-bold"><i class="fa-solid fa-chevron-right expand-icon"></i> ${row.symbol}</td>`;
         const price = `<td>${formatCurrency(row.price)}</td>`;
         const flip = `<td>${formatCurrency(row.gamma_flip)}</td>`;
         
@@ -487,7 +511,7 @@ function populateScreenerTable(items) {
         // Skew
         const skewTd = `<td>${(row.iv_skew * 100).toFixed(1)}%</td>`;
         
-        // Alerts
+        // Alerts summary tags (truncated for standard cell, full details in expanded view)
         let alertsHtml = '<td>';
         if (row.alerts && row.alerts.length > 0) {
             row.alerts.forEach(alert => {
@@ -497,7 +521,7 @@ function populateScreenerTable(items) {
                 } else if (alert.toLowerCase().includes('bearish') || alert.toLowerCase().includes('put')) {
                     tagClass += ' bearish';
                 }
-                alertsHtml += `<span class="${tagClass}" title="${alert}">${alert.substring(0, 30)}${alert.length > 30 ? '...' : ''}</span> `;
+                alertsHtml += `<span class="${tagClass}" title="${alert}">${alert.substring(0, 24)}${alert.length > 24 ? '...' : ''}</span> `;
             });
         } else {
             alertsHtml += '<span class="timestamp">No Alerts</span>';
@@ -505,8 +529,67 @@ function populateScreenerTable(items) {
         alertsHtml += '</td>';
         
         tr.innerHTML = sym + price + flip + distToFlip + regime + cWall + pWall + oviTd + skewTd + alertsHtml;
+        
+        // Collapsible Detail Row
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'screener-detail-row';
+        detailTr.id = `detail-${row.symbol}`;
+        detailTr.style.display = 'none';
+        
+        const alertTime = new Date().toLocaleTimeString();
+        let alertsListHtml = '';
+        if (row.alerts && row.alerts.length > 0) {
+            alertsListHtml = row.alerts.map(a => `<li><span class="alert-time">[${alertTime}]</span> ${a}</li>`).join('');
+        } else {
+            alertsListHtml = '<li>No active desk alerts for this symbol.</li>';
+        }
+        
+        detailTr.innerHTML = `
+            <td colspan="10">
+                <div class="detail-container">
+                    <div class="detail-grid">
+                        <div class="detail-col">
+                            <h4>System Metrics Detail</h4>
+                            <p><strong>Total Net GEX Exposure:</strong> ${row.total_gex_dollar >= 0 ? '+' : ''}$${formatCompact(row.total_gex_dollar)}</p>
+                            <p><strong>Total Vanna Exposure (VEX):</strong> $${formatCompact(row.total_vex_dollar)}</p>
+                            <p><strong>Total Charm Exposure (CEX):</strong> $${formatCompact(row.total_cex_dollar)}</p>
+                            <p><strong>Volatility Skew (Put/Call):</strong> ${(row.iv_skew * 100).toFixed(2)}%</p>
+                        </div>
+                        <div class="detail-col">
+                            <h4>Alerts History Log</h4>
+                            <ul class="detail-alerts-list">
+                                ${alertsListHtml}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </td>
+        `;
+        
+        // Click handler to toggle details
+        tr.addEventListener('click', () => {
+            const isExpanded = tr.classList.toggle('expanded');
+            detailTr.style.display = isExpanded ? 'table-row' : 'none';
+        });
+        
         tbody.appendChild(tr);
+        tbody.appendChild(detailTr);
     });
+    
+    // Trigger window alert and system notifications for newly fired alerts
+    if (newlyFiredAlerts.length > 0) {
+        // Trigger OS notification if allowed
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification("GammaGEX New Desk Alert(s) Fired", {
+                body: newlyFiredAlerts.join(', '),
+                silent: false
+            });
+        }
+        // Trigger browser blocking window alert
+        setTimeout(() => {
+            alert(`🚨 NEW GEX DESK ALERT(S) FIRED!\n\n${newlyFiredAlerts.join('\n')}`);
+        }, 150);
+    }
 }
 
 // --- TAB 3: Data Validation ---
@@ -835,136 +918,168 @@ function updateStrategyPlaybook(data) {
     const strikeWidth = Math.round(spot * 0.01 / 5) * 5 || 5;
     const isPositiveGamma = spot >= flip;
     
+    // Proximity thresholds (0.8% of spot price)
+    const threshold = spot * 0.008;
+    const distFlip = Math.abs(spot - flip);
+    
     let html = '';
+    let triggeredCount = 0;
     
     if (isPositiveGamma) {
-        // --- POSITIVE GAMMA (Mean-Reversion / Decay Plays) ---
+        // --- POSITIVE GAMMA (Mean-Reversion & Premium Decay) ---
         
-        // 1. Iron Condor
-        html += `
-            <div class="play-card neutral-play">
-                <div class="play-header">
-                    <span class="play-title">Iron Condor</span>
-                    <span class="play-tag neutral">Neutral</span>
+        // 1. Put Wall Credit Spread (Trigger: spot is close to put wall)
+        if (spot >= putWall && (spot - putWall) <= threshold) {
+            triggeredCount++;
+            html += `
+                <div class="play-card bullish-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-circle-chevron-up" style="color: var(--color-green);"></i> Put Wall Bounce (Triggered)</span>
+                        <span class="play-tag bullish">Bullish</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy Put:</span><span class="setup-val">$${(putWall - strikeWidth).toFixed(1)}</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val" style="color: var(--color-green); font-weight: 700;">$${putWall.toFixed(1)} (Put Wall)</span></div>
+                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${((spot - putWall)/spot*100).toFixed(2)}% above wall</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot price is near the Put Wall ($${putWall.toFixed(1)}). Dealer short put hedging acts as firm support.<br><br>
+                        <strong>Execution:</strong> Sell Put Spread. Close at 75% max credit. Stop loss immediately if spot closes below the Put Wall.
+                    </div>
                 </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">30 - 45 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Put:</span><span class="setup-val">$${(putWall - strikeWidth).toFixed(1)}</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val" style="color: #f43f5e; font-weight: 700;">$${putWall.toFixed(1)} (Put Wall)</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val" style="color: #3b82f6; font-weight: 700;">$${callWall.toFixed(1)} (Call Wall)</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Call:</span><span class="setup-val">$${(callWall + strikeWidth).toFixed(1)}</span></div>
-                </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> Positive GEX acts as a volatility dampener. Spot price is expected to remain range-bound, pinning between the walls.<br><br>
-                    <strong>Execution:</strong> Sell both spreads to collect max premium. Close at 50% max profit. Stop loss if spot closes outside the walls on a daily basis.
-                </div>
-            </div>
-        `;
+            `;
+        }
         
-        // 2. Put Wall Credit Spread (Bull Put)
-        html += `
-            <div class="play-card bullish-play">
-                <div class="play-header">
-                    <span class="play-title">Put Wall Credit Spread</span>
-                    <span class="play-tag bullish">Bullish</span>
+        // 2. Call Wall Credit Spread (Trigger: spot is close to call wall)
+        if (spot <= callWall && (callWall - spot) <= threshold) {
+            triggeredCount++;
+            html += `
+                <div class="play-card bearish-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-circle-chevron-down" style="color: var(--color-red);"></i> Call Wall Reversal (Triggered)</span>
+                        <span class="play-tag bearish">Bearish</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val" style="color: var(--color-red); font-weight: 700;">$${callWall.toFixed(1)} (Call Wall)</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy Call:</span><span class="setup-val">$${(callWall + strikeWidth).toFixed(1)}</span></div>
+                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${((callWall - spot)/spot*100).toFixed(2)}% below wall</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot price is testing the Call Wall ($${callWall.toFixed(1)}). Dealer long call hedging caps upside breakout potential.<br><br>
+                        <strong>Execution:</strong> Sell Call Spread. Close at 75% max credit. Stop loss if spot closes above the Call Wall.
+                    </div>
                 </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Put:</span><span class="setup-val">$${(putWall - strikeWidth).toFixed(1)}</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val" style="color: #f43f5e; font-weight: 700;">$${putWall.toFixed(1)} (Put Wall)</span></div>
-                    <div class="setup-row"><span class="setup-label">Exit Target:</span><span class="setup-val">75% Max Credit</span></div>
-                </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> Put Wall acts as a firm floor. As spot drops near it, dealers buy underlying shares to maintain delta neutrality, forcing a bounce.<br><br>
-                    <strong>Execution:</strong> Open when Spot drops within 0.5% of the Put Wall ($${putWall.toFixed(1)}). Stop loss immediately if spot breaks below the Put Wall.
-                </div>
-            </div>
-        `;
+            `;
+        }
         
-        // 3. Call Wall Credit Spread (Bear Call)
-        html += `
-            <div class="play-card bearish-play">
-                <div class="play-header">
-                    <span class="play-title">Call Wall Credit Spread</span>
-                    <span class="play-tag bearish">Bearish</span>
+        // 3. Iron Condor (Trigger: spot is safely inside the channel and not near either wall)
+        if (spot > (putWall + threshold) && spot < (callWall - threshold)) {
+            triggeredCount++;
+            html += `
+                <div class="play-card neutral-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-arrows-left-right" style="color: var(--color-accent);"></i> Range-Bound Channel (Triggered)</span>
+                        <span class="play-tag neutral">Neutral</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">30 - 45 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Put (Floor):</span><span class="setup-val">$${putWall.toFixed(1)} (Put Wall)</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Call (Cap):</span><span class="setup-val">$${callWall.toFixed(1)} (Call Wall)</span></div>
+                        <div class="setup-row"><span class="setup-label">Channel Width:</span><span class="setup-val">${((callWall - putWall)/spot*100).toFixed(1)}% of Spot</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot price is well inside the channel and positive GEX suppresses volatility. High probability range-bound consolidation.<br><br>
+                        <strong>Execution:</strong> Open Iron Condor. Close at 50% max profit. Stop loss if either wall is breached on a daily closing basis.
+                    </div>
                 </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val" style="color: #3b82f6; font-weight: 700;">$${callWall.toFixed(1)} (Call Wall)</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Call:</span><span class="setup-val">$${(callWall + strikeWidth).toFixed(1)}</span></div>
-                    <div class="setup-row"><span class="setup-label">Exit Target:</span><span class="setup-val">75% Max Credit</span></div>
-                </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> Call Wall acts as a firm ceiling. As spot rises near it, dealers sell underlying shares, capping the upside.<br><br>
-                    <strong>Execution:</strong> Open when Spot rises within 0.5% of the Call Wall ($${callWall.toFixed(1)}). Stop loss if spot closes above the Call Wall.
-                </div>
-            </div>
-        `;
+            `;
+        }
     } else {
         // --- NEGATIVE GAMMA (Volatility Expansion & Breakouts) ---
         
         const atmStrike = Math.round(spot);
         
-        // 1. Bull Call Debit Spread (Regime Flip Breakout)
-        html += `
-            <div class="play-card bullish-play">
-                <div class="play-header">
-                    <span class="play-title">Bull Call Debit Spread</span>
-                    <span class="play-tag bullish">Bullish</span>
+        // 1. Bull Call / Bear Put Debit Spreads (Trigger: spot is testing the GEX Flip Level)
+        if (distFlip <= threshold) {
+            triggeredCount++;
+            html += `
+                <div class="play-card bullish-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-bolt" style="color: var(--color-green);"></i> Flip Level Squeeze (Triggered)</span>
+                        <span class="play-tag bullish">Bullish</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy Call (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val">$${(atmStrike + strikeWidth)}</span></div>
+                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${(distFlip/spot*100).toFixed(2)}% from Flip</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot is testing the GEX Flip level ($${flip.toFixed(1)}). A break back into Positive Gamma will force dealer short-covering.<br><br>
+                        <strong>Execution:</strong> Buy Call Spread. Target 100% gain on debit. Close if spot reverses below the Flip level.
+                    </div>
                 </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Call (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val">$${(atmStrike + strikeWidth)}</span></div>
-                    <div class="setup-row"><span class="setup-label">Exit Target:</span><span class="setup-val">100% Return on Debit</span></div>
+            `;
+            
+            triggeredCount++;
+            html += `
+                <div class="play-card bearish-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-arrows-down-to-line" style="color: var(--color-red);"></i> Flip Level Breakdown (Triggered)</span>
+                        <span class="play-tag bearish">Bearish</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy Put (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
+                        <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val">$${(atmStrike - strikeWidth)}</span></div>
+                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${(distFlip/spot*100).toFixed(2)}% from Flip</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot is testing the GEX Flip level ($${flip.toFixed(1)}). A failure here triggers dealer selling to hedge short put exposures.<br><br>
+                        <strong>Execution:</strong> Buy Put Spread. Target 100% gain on debit. Stop loss if spot rises back above the Flip level.
+                    </div>
                 </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> In Negative Gamma, crossing above the Flip level ($${flip.toFixed(1)}) triggers short-covering stock purchases by dealers, accelerating upward breakouts.<br><br>
-                    <strong>Execution:</strong> Enter when spot breaks out above the Flip level. Stop loss immediately if spot closes back below the Flip level (50% loss max).
+            `;
+        } else {
+            // Volatility is expanding, but spot is far from the flip level
+            triggeredCount++;
+            html += `
+                <div class="play-card neutral-play">
+                    <div class="play-header">
+                        <span class="play-title"><i class="fa-solid fa-tornado" style="color: var(--color-accent);"></i> Volatility Expansion</span>
+                        <span class="play-tag neutral">Vol Buy</span>
+                    </div>
+                    <div class="play-setup">
+                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy ATM Call:</span><span class="setup-val">$${atmStrike}</span></div>
+                        <div class="setup-row"><span class="setup-label">Buy ATM Put:</span><span class="setup-val">$${atmStrike}</span></div>
+                        <div class="setup-row"><span class="setup-label">Target Exit:</span><span class="setup-val">35% Net Gain</span></div>
+                    </div>
+                    <div class="play-rules">
+                        <strong>Trigger Rule:</strong> Spot is in deep Negative Gamma and far from the Flip level. High realized volatility swings are expected.<br><br>
+                        <strong>Execution:</strong> Buy Long Straddle. Hold through major macro events. Close on volatility spike.
+                    </div>
                 </div>
-            </div>
-        `;
-        
-        // 2. Bear Put Debit Spread (Regime Flip Breakdown)
-        html += `
-            <div class="play-card bearish-play">
-                <div class="play-header">
-                    <span class="play-title">Bear Put Debit Spread</span>
-                    <span class="play-tag bearish">Bearish</span>
-                </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Put (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                    <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val">$${(atmStrike - strikeWidth)}</span></div>
-                    <div class="setup-row"><span class="setup-label">Exit Target:</span><span class="setup-val">100% Return on Debit</span></div>
-                </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> In Negative Gamma, spot falling below the Flip level ($${flip.toFixed(1)}) triggers aggressive dealer selling to hedge short put gamma, driving a cascade downward.<br><br>
-                    <strong>Execution:</strong> Enter when spot breaks down below the GEX Flip level. Stop loss at 50% loss of debit value.
-                </div>
-            </div>
-        `;
-        
-        // 3. Long Straddle (Squeeze Play)
-        html += `
-            <div class="play-card neutral-play">
-                <div class="play-header">
-                    <span class="play-title">Long Straddle</span>
-                    <span class="play-tag neutral">Vol Buy</span>
-                </div>
-                <div class="play-setup">
-                    <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Call (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                    <div class="setup-row"><span class="setup-label">Buy Put (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                    <div class="setup-row"><span class="setup-label">Exit Target:</span><span class="setup-val">35% Gain on Position</span></div>
-                </div>
-                <div class="play-rules">
-                    <strong>Rationale:</strong> Negative Gamma expands volatility. Squeezes or cascades are highly likely. A large, directional price breakout in either direction generates profit.<br><br>
-                    <strong>Execution:</strong> Buy when Spot is stuck near the Flip level during high-risk catalyst events (earnings, FOMC). Close once volatility spikes.
-                </div>
-            </div>
-        `;
+            `;
+        }
     }
     
-    container.innerHTML = html;
+    if (triggeredCount === 0 || html === '') {
+        container.innerHTML = `
+            <div class="play-card neutral-play" style="grid-column: 1 / -1; text-align: center; padding: 30px;">
+                <div class="play-title" style="font-size: 18px; margin-bottom: 8px;">
+                    <i class="fa-solid fa-circle-nodes" style="color: var(--color-accent); font-size: 24px; margin-bottom: 12px;"></i><br>
+                    No Active Proximity Setups Triggered
+                </div>
+                <div class="play-rules" style="border: none; padding: 0;">
+                    The underlying price ($${spot.toFixed(2)}) is currently in a neutral zone.<br>
+                    Monitor proximity to the **Put Wall ($${putWall.toFixed(1)})** or **Call Wall ($${callWall.toFixed(1)})** for active credit spread setups, or the **Flip Level ($${flip.toFixed(1)})** for debit breakouts.
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = html;
+    }
 }
