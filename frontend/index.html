@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gamma GEX Trading System</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS Style Link -->
+    <link rel="stylesheet" href="index.css">
+    <!-- Chart.js for Quantitative Data -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-chart-line brand-icon"></i>
+                <span class="brand-text">GAMMA<span class="brand-accent">GEX</span></span>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <button class="menu-item active" data-tab="live-charts">
+                    <i class="fa-solid fa-chart-column"></i><span>Live GEX Profile</span>
+                </button>
+                <button class="menu-item" data-tab="screener">
+                    <i class="fa-solid fa-list-check"></i><span>Market Screener</span>
+                </button>
+                <button class="menu-item" data-tab="validation">
+                    <i class="fa-solid fa-shield-halved"></i><span>GEX Validator</span>
+                </button>
+                <button class="menu-item" data-tab="backtesting">
+                    <i class="fa-solid fa-rotate-left"></i><span>Backtester</span>
+                </button>
+                <button class="menu-item" data-tab="strategy-guide">
+                    <i class="fa-solid fa-book-open"></i><span>Strategy Guide</span>
+                </button>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <span class="user-id">Desk ID: Institutional-1</span>
+                <span class="status-indicator"><span class="pulse"></span>System Online</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header bar -->
+            <header class="header">
+                <div class="search-section">
+                    <input type="text" id="symbol-input" value="SPY" placeholder="Enter ticker (e.g. SPY, AAPL)" uppercase>
+                    <button id="fetch-btn" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Analyze</button>
+                </div>
+                
+                <div class="header-actions">
+                    <div class="expiration-container">
+                        <label for="expiration-select">Expiration:</label>
+                        <select id="expiration-select" class="dropdown">
+                            <option value="all">All Expirations (Aggregate)</option>
+                        </select>
+                    </div>
+                    <button id="refresh-btn" class="btn btn-secondary"><i class="fa-solid fa-rotate"></i> Refresh</button>
+                    <span id="last-updated" class="timestamp">Last Sync: --:--:--</span>
+                </div>
+            </header>
+
+            <!-- Quick Stats Banners -->
+            <section class="stats-grid">
+                <div class="stat-card spot-card">
+                    <div class="stat-icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Spot Price</span>
+                        <h2 id="spot-price-val">$0.00</h2>
+                    </div>
+                </div>
+                <div class="stat-card flip-card">
+                    <div class="stat-icon"><i class="fa-solid fa-arrows-left-right"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">GEX Flip Level</span>
+                        <h2 id="flip-level-val">$0.00</h2>
+                        <span id="flip-dist-val" class="stat-sub">Distance: 0.0%</span>
+                    </div>
+                </div>
+                <div class="stat-card call-wall-card">
+                    <div class="stat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Call Wall (Resistance)</span>
+                        <h2 id="call-wall-val">$0.00</h2>
+                    </div>
+                </div>
+                <div class="stat-card put-wall-card">
+                    <div class="stat-icon"><i class="fa-solid fa-square-minus"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Put Wall (Support)</span>
+                        <h2 id="put-wall-val">$0.00</h2>
+                    </div>
+                </div>
+                <div class="stat-card regime-card positive-regime">
+                    <div class="stat-icon"><i class="fa-solid fa-arrows-spin"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">GEX Volatility Regime</span>
+                        <h2 id="regime-val">Positive Gamma</h2>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 1: Live GEX Profile -->
+            <div id="live-charts" class="tab-content active">
+                <div class="charts-layout">
+                    <!-- GEX Strike Profile (Dominant Chart) -->
+                    <div class="card chart-card large-chart">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-chart-column"></i> Net Dealer GEX by Strike Price ($ Millions)</h3>
+                            <span class="card-subtitle">Aggregated options gamma exposure per 1% move</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="gex-strike-chart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- VEX & CEX Profiles -->
+                    <div class="charts-sidebar">
+                        <div class="card chart-card small-chart">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-chart-line"></i> Vanna Exposure (VEX) by Strike</h3>
+                                <span class="card-subtitle">Sensitivity to 1% absolute IV shift</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="vex-chart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="card chart-card small-chart">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-hourglass-half"></i> Charm Exposure (CEX) by Strike</h3>
+                                <span class="card-subtitle">Daily delta-hedging decay per strike ($)</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="cex-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Active GEX Strategy Playbook -->
+                <div id="strategy-playbook-card" class="card full-width-card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-compass-drafting"></i> Active GEX Strategy Playbook</h3>
+                        <span class="card-subtitle">Algorithmic option strategy blueprints using actual calculated levels</span>
+                    </div>
+                    <div id="playbook-container" class="playbook-grid">
+                        <!-- Injected dynamically based on GEX regime -->
+                    </div>
+                </div>
+
+                <!-- Strike Details Table -->
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-table-list"></i> Option Chain & Desk Metrics</h3>
+                        <span class="card-subtitle">Strike-by-strike breakdown of options volume, open interest, and hedging flows</span>
+                    </div>
+                    <div class="table-container">
+                        <table id="strike-table">
+                            <thead>
+                                <tr>
+                                    <th>Strike</th>
+                                    <th>Call Vol</th>
+                                    <th>Call OI</th>
+                                    <th>GEX Dollar (Calls)</th>
+                                    <th>GEX Dollar (Puts)</th>
+                                    <th>Net GEX Dollar</th>
+                                    <th>Put OI</th>
+                                    <th>Put Vol</th>
+                                    <th>Vol/OI Ratio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Market Screener -->
+            <div id="screener" class="tab-content">
+                <!-- Watchlist Manager Card -->
+                <div class="card watchlist-manager-card full-width-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-tags"></i> Watchlist Manager</h3>
+                        <span class="card-subtitle">Add or remove symbols to scan in the GEX screener (persisted in browser storage)</span>
+                    </div>
+                    <div class="watchlist-controls">
+                        <div class="add-symbol-form">
+                            <input type="text" id="watchlist-input" placeholder="Symbol (e.g., AMD, GOOG)" uppercase>
+                            <button id="add-watchlist-btn" class="btn btn-secondary"><i class="fa-solid fa-plus"></i> Add Ticker</button>
+                        </div>
+                        <div id="watchlist-pills" class="pills-container">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card table-card full-width-card">
+                    <div class="card-header">
+                        <div class="header-title-section">
+                            <h3><i class="fa-solid fa-list-check"></i> Watchlist Options GEX Screener</h3>
+                            <span class="card-subtitle">Real-time dealer regimes and signals for major indices and tickers</span>
+                        </div>
+                        <button id="run-screener-btn" class="btn btn-primary"><i class="fa-solid fa-play"></i> Scan Watchlist</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="screener-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Price</th>
+                                    <th>Gamma Flip</th>
+                                    <th>Dist. to Flip</th>
+                                    <th>GEX Regime</th>
+                                    <th>Call Wall</th>
+                                    <th>Put Wall</th>
+                                    <th>OVI (Intraday)</th>
+                                    <th>IV Skew (Put/Call)</th>
+                                    <th>Desk Alerts</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Data Validation Engine -->
+            <div id="validation" class="tab-content">
+                <div class="grid-two-cols">
+                    <!-- Upload External GEX Data -->
+                    <div class="card form-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-cloud-arrow-up"></i> Upload External GEX File</h3>
+                            <span class="card-subtitle">Upload CSV/JSON from FlashAlpha, Quantwheel, or OptionsFlow to validate calculations</span>
+                        </div>
+                        <div class="card-body">
+                            <form id="upload-form">
+                                <div class="form-group">
+                                    <label for="validation-symbol">Symbol to Validate:</label>
+                                    <input type="text" id="validation-symbol" value="SPY" placeholder="SPY" uppercase>
+                                </div>
+                                <div class="form-group file-upload-group">
+                                    <label for="validation-file" class="file-label">
+                                        <i class="fa-solid fa-file-excel file-icon"></i>
+                                        <span id="file-name-txt">Select External CSV/JSON File</span>
+                                    </label>
+                                    <input type="file" id="validation-file" style="display:none;" accept=".csv,.json">
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-shield-halved"></i> Execute Validation Analysis</button>
+                            </form>
+                            
+                            <div id="validation-status" class="validation-message"></div>
+                        </div>
+                    </div>
+
+                    <!-- Sensitivity Boundaries -->
+                    <div class="card info-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-circle-info"></i> Sensitivity bounds (Confidence Interval)</h3>
+                            <span class="card-subtitle">Calculated range of key levels under varied mathematical parameters</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="sensitivity-metric">
+                                <span class="metric-label">Gamma Flip Range:</span>
+                                <div class="range-display">
+                                    <span id="flip-min-val" class="range-val">$0.00</span>
+                                    <div class="range-bar"><div id="flip-range-fill" class="range-bar-fill"></div></div>
+                                    <span id="flip-max-val" class="range-val">$0.00</span>
+                                </div>
+                                <span id="flip-spread-pct" class="range-sub">Spread: 0.0% of spot</span>
+                            </div>
+                            <hr class="divider">
+                            <div class="sensitivity-metric">
+                                <span class="metric-label">Call Wall Range:</span>
+                                <div class="range-display">
+                                    <span id="call-min-val" class="range-val">$0.00</span>
+                                    <div class="range-bar"><div id="call-range-fill" class="range-bar-fill"></div></div>
+                                    <span id="call-max-val" class="range-val">$0.00</span>
+                                </div>
+                            </div>
+                            <hr class="divider">
+                            <div class="sensitivity-metric">
+                                <span class="metric-label">Put Wall Range:</span>
+                                <div class="range-display">
+                                    <span id="put-min-val" class="range-val">$0.00</span>
+                                    <div class="range-bar"><div id="put-range-fill" class="range-bar-fill"></div></div>
+                                    <span id="put-max-val" class="range-val">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation Report Card -->
+                <div id="validation-report-card" class="card full-width-card" style="display:none;">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-chart-simple"></i> Validation Comparison Report</h3>
+                        <span class="card-subtitle">Correlation and discrepancy analysis against uploaded data source</span>
+                    </div>
+                    <div class="validation-grid">
+                        <div class="validation-stat">
+                            <span class="val-label">Curve Correlation</span>
+                            <h2 id="val-corr">0.00%</h2>
+                            <span class="val-desc">GEX curve convergence score</span>
+                        </div>
+                        <div class="validation-stat">
+                            <span class="val-label">Mean Absolute Error</span>
+                            <h2 id="val-mae">$0.00</h2>
+                            <span class="val-desc">Average strike dollar discrepancy</span>
+                        </div>
+                        <div class="validation-stat">
+                            <span class="val-label">Scale Matching</span>
+                            <h2 id="val-scale">--</h2>
+                            <span class="val-desc">Scale calibration check</span>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Level</th>
+                                    <th>Our Calculation</th>
+                                    <th>External Source</th>
+                                    <th>Discrepancy (Delta)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Gamma Flip Level</strong></td>
+                                    <td id="comp-flip-our">$0.00</td>
+                                    <td id="comp-flip-ext">$0.00</td>
+                                    <td id="comp-flip-diff">$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Call Wall (Resistance)</strong></td>
+                                    <td id="comp-call-our">$0.00</td>
+                                    <td id="comp-call-ext">$0.00</td>
+                                    <td id="comp-call-diff">$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Put Wall (Support)</strong></td>
+                                    <td id="comp-put-our">$0.00</td>
+                                    <td id="comp-put-ext">$0.00</td>
+                                    <td id="comp-put-diff">$0.00</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Backtesting Terminal -->
+            <div id="backtesting" class="tab-content">
+                <div class="backtest-layout">
+                    <!-- Controls -->
+                    <div class="card form-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-sliders"></i> Simulation Parameters</h3>
+                            <span class="card-subtitle">Define parameters and strategy for historical simulation</span>
+                        </div>
+                        <div class="card-body">
+                            <form id="backtest-form">
+                                <div class="form-group">
+                                    <label for="bt-symbol">Ticker Symbol:</label>
+                                    <input type="text" id="bt-symbol" value="SPY" placeholder="SPY" uppercase>
+                                </div>
+                                <div class="form-group">
+                                    <label for="bt-strategy">Strategy:</label>
+                                    <select id="bt-strategy" class="dropdown">
+                                        <option value="gex_flip">GEX Flip Regime Trading</option>
+                                        <option value="ovi_breakout">OVI Breakout Strategy</option>
+                                        <option value="wall_reversion">Gamma Wall Reversion (Mean Reversion)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="bt-capital">Starting Capital ($):</label>
+                                    <input type="number" id="bt-capital" value="100000" min="1000">
+                                </div>
+                                <div class="grid-two-cols">
+                                    <div class="form-group">
+                                        <label for="bt-start">Start Date:</label>
+                                        <input type="date" id="bt-start" value="2024-01-01">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="bt-end">End Date:</label>
+                                        <input type="date" id="bt-end" value="2026-01-01">
+                                    </div>
+                                </div>
+                                <div class="grid-two-cols">
+                                    <div class="form-group">
+                                        <label for="bt-ema">GEX EMA Length:</label>
+                                        <input type="number" id="bt-ema" value="20" min="5" max="100">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="bt-wall">Wall High/Low Period:</label>
+                                        <input type="number" id="bt-wall" value="20" min="5" max="100">
+                                    </div>
+                                </div>
+                                <div class="grid-two-cols">
+                                    <div class="form-group">
+                                        <label for="bt-gex-thr">GEX Trigger Thr:</label>
+                                        <input type="number" id="bt-gex-thr" value="0.2" step="0.05" min="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="bt-ovi-thr">OVI Breakout Thr:</label>
+                                        <input type="number" id="bt-ovi-thr" value="0.3" step="0.05" min="0">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="bt-stop">Stop Loss (%):</label>
+                                    <input type="number" id="bt-stop" value="1.5" step="0.1" min="0.1" max="10">
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-play"></i> Run Historical Backtest</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Performance Report -->
+                    <div class="backtest-results-container">
+                        <div id="bt-loading" class="loading-overlay" style="display:none;">
+                            <div class="spinner"></div>
+                            <span>Running historical quantitative simulation...</span>
+                        </div>
+                        
+                        <div id="bt-metrics-cards" class="results-grid" style="display:none;">
+                            <div class="result-card">
+                                <span class="res-label">Net Strategy Return</span>
+                                <h2 id="bt-res-return" class="text-green">0.00%</h2>
+                                <span id="bt-res-bh-return" class="res-sub">Buy & Hold: 0.00%</span>
+                            </div>
+                            <div class="result-card">
+                                <span class="res-label">Sharpe Ratio</span>
+                                <h2 id="bt-res-sharpe">0.00</h2>
+                                <span class="res-sub">Risk-Adjusted Score</span>
+                            </div>
+                            <div class="result-card">
+                                <span class="res-label">Max Drawdown</span>
+                                <h2 id="bt-res-dd" class="text-red">0.00%</h2>
+                                <span class="res-sub">Peak-to-Trough Loss</span>
+                            </div>
+                            <div class="result-card">
+                                <span class="res-label">Win Rate</span>
+                                <h2 id="bt-res-win">0.00%</h2>
+                                <span id="bt-res-trades" class="res-sub">Total Trades: 0</span>
+                            </div>
+                        </div>
+
+                        <div id="bt-chart-card" class="card chart-card full-width-card" style="display:none;">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-line-chart"></i> Portfolio Equity Growth vs. Buy & Hold</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="backtest-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backtest Trades Log -->
+                <div id="bt-trades-card" class="card table-card full-width-card" style="display:none;">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-receipt"></i> Completed Simulation Trades Log</h3>
+                    </div>
+                    <div class="table-container">
+                        <table id="bt-trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Strategy Signal</th>
+                                    <th>Entry Date</th>
+                                    <th>Exit Date</th>
+                                    <th>Entry Price</th>
+                                    <th>Exit Price</th>
+                                    <th>Return (%)</th>
+                                    <th>Profit ($)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: Strategy Guide -->
+            <div id="strategy-guide" class="tab-content">
+                <div class="card text-card full-width-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-book-open"></i> Gamma GEX Strategy Blueprint & Cheat Sheet</h3>
+                        <span class="card-subtitle">A comprehensive breakdown of how options market maker hedging guides price action</span>
+                    </div>
+                    <div class="card-body markdown-style">
+                        <h4>1. The Core GEX Volatility Regime Principle</h4>
+                        <p>Market maker hedging actions dictate realized market volatility based on the sign of dealer GEX:</p>
+                        <ul>
+                            <li><strong>Positive Gamma Regime (Spot Price > Flip Level)</strong>: Market makers buy stock as it drops and sell stock as it rises to keep delta-neutral. This dampens market movement. <strong>Best Strategies:</strong> Iron Condors, Range-Bound Mean Reversion, Selling Premium.</li>
+                            <li><strong>Negative Gamma Regime (Spot Price < Flip Level)</strong>: Market makers sell stock as it drops and buy stock as it rises to keep delta-neutral. This accelerates market movement. <strong>Best Strategies:</strong> Long Straddles/Strangles, Breakout Trend Following, Protective Put Buying.</li>
+                        </ul>
+                        
+                        <h4>2. Option Volume Imbalance (OVI) Breakouts</h4>
+                        <p>Open interest is static (updated once per day), but volume shows intraday institutional commitments. The Option Volume Imbalance measures the ratio of call vs put volume:</p>
+                        <ul>
+                            <li><strong>Bullish breakout confirmation:</strong> When spot price breaks resistance AND OVI is high (> 0.3), institutions are aggressively bidding call options. Dealers are forced to buy stock immediately, fueling a breakout.</li>
+                            <li><strong>Bearish breakout confirmation:</strong> When spot price breaks support AND OVI is low (< -0.3), institutions are bidding put options. Dealers are forced to short stock immediately, fueling a drop.</li>
+                        </ul>
+
+                        <h4>3. Gamma vs. Time (Overextension & OPEX Reversals)</h4>
+                        <p>Option expiration (OPEX) weeks amplify dealer hedging behavior due to **Charm** (delta decay over time). As expiration approaches ($T \to 0$):</p>
+                        <ul>
+                            <li><strong>Call Wall Reversals:</strong> If spot is overextended upwards towards the Call Wall, dealer buying halts once they are fully delta-hedged. If the price stalls, decay (Charm) forces dealers to sell their stock hedge, creating a swift reversal down.</li>
+                            <li><strong>Put Wall Reversals:</strong> If spot drops to the Put Wall, dealer selling ceases. A slight bounce in spot forces dealers to quickly cover their short hedges, triggering an OPEX short-covering bounce.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- JS App Script Link -->
+    <script src="app.js"></script>
+</body>
+</html>
