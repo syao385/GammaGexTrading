@@ -6,6 +6,10 @@ let currentExpiration = 'all';
 let rawExpirations = [];
 let watchlist = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'TSLA', 'NVDA'];
 let seenAlerts = new Set();
+let screenerRawData = [];
+let screenerFilteredData = [];
+let screenerPage = 1;
+const screenerPageSize = 10;
 
 // Chart instances
 let gexStrikeChart = null;
@@ -117,6 +121,28 @@ function setupEventListeners() {
     document.getElementById('watchlist-input').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             addSymbolToWatchlist();
+        }
+    });
+
+    // Screener Filter Change
+    document.getElementById('screener-alert-filter').addEventListener('change', () => {
+        if (screenerRawData.length > 0) {
+            screenerPage = 1;
+            filterScreenerData();
+        }
+    });
+    
+    // Screener Pagination Prev/Next
+    document.getElementById('screener-prev-btn').addEventListener('click', () => {
+        if (screenerPage > 1) {
+            renderScreenerPage(screenerPage - 1);
+        }
+    });
+    
+    document.getElementById('screener-next-btn').addEventListener('click', () => {
+        const totalPages = Math.ceil(screenerFilteredData.length / screenerPageSize) || 1;
+        if (screenerPage < totalPages) {
+            renderScreenerPage(screenerPage + 1);
         }
     });
 }
@@ -438,7 +464,14 @@ async function runScreener() {
         }
         
         const data = await response.json();
-        populateScreenerTable(data);
+        screenerRawData = data;
+        screenerPage = 1;
+        
+        // Process OS & window alerts for new GEX alerts
+        processNewAlertsNotification(data);
+        
+        // Apply filter and render
+        filterScreenerData();
     } catch (error) {
         console.error('Failed to run GEX screener:', error);
         alert(`Screener error: ${error.message}`);
@@ -448,10 +481,8 @@ async function runScreener() {
     }
 }
 
-function populateScreenerTable(items) {
-    const tbody = document.querySelector('#screener-table tbody');
-    tbody.innerHTML = '';
-    
+// Process new alerts notification
+function processNewAlertsNotification(items) {
     const newlyFiredAlerts = [];
     const isFirstScan = (seenAlerts.size === 0);
     
@@ -461,17 +492,7 @@ function populateScreenerTable(items) {
     }
     
     items.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.className = 'screener-row';
-        tr.style.cursor = 'pointer';
-        
-        if (row.error) {
-            tr.innerHTML = `<td class="text-bold">${row.symbol}</td><td colspan="9" class="text-red">${row.error}</td>`;
-            tbody.appendChild(tr);
-            return;
-        }
-        
-        // Process new alerts logic
+        if (row.error) return;
         if (row.alerts && row.alerts.length > 0) {
             row.alerts.forEach(alertText => {
                 const alertKey = `${row.symbol}:${alertText}`;
@@ -482,6 +503,95 @@ function populateScreenerTable(items) {
                     }
                 }
             });
+        }
+    });
+    
+    if (newlyFiredAlerts.length > 0) {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification("GammaGEX New Desk Alert(s) Fired", {
+                body: newlyFiredAlerts.join(', '),
+                silent: false
+            });
+        }
+        setTimeout(() => {
+            alert(`🚨 NEW GEX DESK ALERT(S) FIRED!\n\n${newlyFiredAlerts.join('\n')}`);
+        }, 150);
+    }
+}
+
+// Filter screener data based on dropdown selection
+function filterScreenerData() {
+    const filterType = document.getElementById('screener-alert-filter').value;
+    
+    screenerFilteredData = screenerRawData.filter(item => {
+        if (item.error) return true; // Keep errors
+        if (filterType === 'all') return true;
+        
+        const alerts = item.alerts || [];
+        const hasAlerts = alerts.length > 0;
+        
+        if (filterType === 'any') return hasAlerts;
+        
+        const alertsText = alerts.join(' ').toLowerCase();
+        
+        if (filterType === 'bullish') {
+            // Bullish filters: spot near put wall, bullish ovi, call volume outliers
+            return alerts.some(a => {
+                const al = a.toLowerCase();
+                return al.includes('bullish') || al.includes('call volume') || al.includes('put wall');
+            });
+        }
+        if (filterType === 'bearish') {
+            // Bearish filters: spot near call wall, bearish ovi, put volume outliers
+            return alerts.some(a => {
+                const al = a.toLowerCase();
+                return al.includes('bearish') || al.includes('put volume') || al.includes('call wall');
+            });
+        }
+        if (filterType === 'flip') {
+            return alertsText.includes('flip');
+        }
+        if (filterType === 'uoa') {
+            return alertsText.includes('uoa');
+        }
+        if (filterType === 'wall') {
+            return alertsText.includes('wall');
+        }
+        return true;
+    });
+    
+    renderScreenerPage(1);
+}
+
+// Render specific page of filtered screener results
+function renderScreenerPage(page) {
+    screenerPage = page;
+    const tbody = document.querySelector('#screener-table tbody');
+    tbody.innerHTML = '';
+    
+    const totalPages = Math.ceil(screenerFilteredData.length / screenerPageSize) || 1;
+    if (screenerPage > totalPages) screenerPage = totalPages;
+    if (screenerPage < 1) screenerPage = 1;
+    
+    const startIdx = (screenerPage - 1) * screenerPageSize;
+    const endIdx = Math.min(startIdx + screenerPageSize, screenerFilteredData.length);
+    const pageData = screenerFilteredData.slice(startIdx, endIdx);
+    
+    if (pageData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">No records found matching the active filter.</td></tr>`;
+        updateScreenerPagination(totalPages);
+        return;
+    }
+    
+    pageData.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'screener-row';
+        tr.style.cursor = 'pointer';
+        
+        if (row.error) {
+            tr.innerHTML = `<td class="text-bold">${row.symbol}</td><td colspan="9" class="text-red">${row.error}</td>`;
+            tbody.appendChild(tr);
+            return;
         }
         
         // Map elements
@@ -511,7 +621,7 @@ function populateScreenerTable(items) {
         // Skew
         const skewTd = `<td>${(row.iv_skew * 100).toFixed(1)}%</td>`;
         
-        // Alerts summary tags (truncated for standard cell, full details in expanded view)
+        // Alerts summary tags
         let alertsHtml = '<td>';
         if (row.alerts && row.alerts.length > 0) {
             row.alerts.forEach(alert => {
@@ -576,19 +686,42 @@ function populateScreenerTable(items) {
         tbody.appendChild(detailTr);
     });
     
-    // Trigger window alert and system notifications for newly fired alerts
-    if (newlyFiredAlerts.length > 0) {
-        // Trigger OS notification if allowed
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification("GammaGEX New Desk Alert(s) Fired", {
-                body: newlyFiredAlerts.join(', '),
-                silent: false
-            });
-        }
-        // Trigger browser blocking window alert
-        setTimeout(() => {
-            alert(`🚨 NEW GEX DESK ALERT(S) FIRED!\n\n${newlyFiredAlerts.join('\n')}`);
-        }, 150);
+    updateScreenerPagination(totalPages);
+}
+
+// Update screener pagination DOM controls
+function updateScreenerPagination(totalPages) {
+    const container = document.getElementById('screener-pagination');
+    
+    // Hide pagination if entries <= size
+    if (screenerFilteredData.length <= screenerPageSize) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'flex';
+    
+    // Update info text
+    const startIdx = (screenerPage - 1) * screenerPageSize + 1;
+    const endIdx = Math.min(startIdx + screenerPageSize - 1, screenerFilteredData.length);
+    document.getElementById('screener-pagination-info').textContent = `Showing ${startIdx}-${endIdx} of ${screenerFilteredData.length} entries`;
+    
+    // Disable prev/next buttons
+    document.getElementById('screener-prev-btn').disabled = (screenerPage === 1);
+    document.getElementById('screener-next-btn').disabled = (screenerPage === totalPages);
+    
+    // Render page numbers
+    const pageContainer = document.getElementById('screener-page-numbers');
+    pageContainer.innerHTML = '';
+    
+    for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement('button');
+        btn.className = `page-btn ${screenerPage === i ? 'active' : ''}`;
+        btn.textContent = i;
+        btn.addEventListener('click', () => {
+            renderScreenerPage(i);
+        });
+        pageContainer.appendChild(btn);
     }
 }
 

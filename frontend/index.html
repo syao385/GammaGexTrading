@@ -209,7 +209,21 @@
                             <h3><i class="fa-solid fa-list-check"></i> Watchlist Options GEX Screener</h3>
                             <span class="card-subtitle">Real-time dealer regimes and signals for major indices and tickers</span>
                         </div>
-                        <button id="run-screener-btn" class="btn btn-primary"><i class="fa-solid fa-play"></i> Scan Watchlist</button>
+                        <div class="header-actions">
+                            <div class="expiration-container">
+                                <label for="screener-alert-filter">Filter Alerts:</label>
+                                <select id="screener-alert-filter" class="dropdown">
+                                    <option value="all">Show All Tickers</option>
+                                    <option value="any">Has Any Alert</option>
+                                    <option value="bullish">Bullish Alerts Only</option>
+                                    <option value="bearish">Bearish Alerts Only</option>
+                                    <option value="flip">Flip Proximity Only</option>
+                                    <option value="uoa">Unusual Activity (UOA)</option>
+                                    <option value="wall">Wall Proximity Only</option>
+                                </select>
+                            </div>
+                            <button id="run-screener-btn" class="btn btn-primary"><i class="fa-solid fa-play"></i> Scan Watchlist</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table id="screener-table">
@@ -231,6 +245,15 @@
                                 <!-- Injected dynamically -->
                             </tbody>
                         </table>
+                    </div>
+                    <!-- Screener Pagination Controls -->
+                    <div id="screener-pagination" class="pagination-container" style="display: none;">
+                        <span id="screener-pagination-info" class="pagination-info">Showing 1-10 of 25 entries</span>
+                        <div class="pagination-buttons">
+                            <button id="screener-prev-btn" class="btn btn-secondary btn-sm"><i class="fa-solid fa-chevron-left"></i> Prev</button>
+                            <div id="screener-page-numbers" class="page-numbers"></div>
+                            <button id="screener-next-btn" class="btn btn-secondary btn-sm">Next <i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>
