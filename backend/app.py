@@ -1,10 +1,11 @@
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import io
 import pandas as pd
 import logging
+import asyncio
 from typing import Optional
 
 from backend.data_fetcher import DataFetcher
@@ -12,6 +13,8 @@ from backend.gex_engine import GEXEngine
 from backend.data_validator import DataValidator
 from backend.screener import MarketScreener
 from backend.backtester import Backtester
+from backend.schwab_streamer import schwab_manager, run_schwab_ws_proxy
+from backend.alpaca_streamer import alpaca_manager, run_alpaca_ws_proxy
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -198,6 +201,160 @@ async def validate_gex_data(symbol: str, file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"API: validation endpoint failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Schwab Authentication and Streaming Endpoints ---
+
+@app.get("/api/schwab/status")
+def get_schwab_status():
+    """Returns whether credentials are set and if the user is authenticated."""
+    return {
+        "configured": bool(schwab_manager.app_key and schwab_manager.app_secret),
+        "authenticated": schwab_manager.is_authenticated()
+    }
+
+@app.post("/api/schwab/save_credentials")
+def save_schwab_credentials(appKey: str = Query(...), appSecret: str = Query(...)):
+    """Saves App Key and App Secret locally to disk."""
+    try:
+        schwab_manager.save_config(app_key=appKey, app_secret=appSecret)
+        return {"success": True, "message": "Schwab credentials saved successfully."}
+    except Exception as e:
+        logger.error(f"Failed to save Schwab credentials: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/alpaca/status")
+def get_alpaca_status():
+    """Returns whether Alpaca API credentials are set."""
+    return {
+        "configured": bool(alpaca_manager.api_key_id and alpaca_manager.secret_key)
+    }
+
+@app.post("/api/alpaca/save_credentials")
+def save_alpaca_credentials(apiKeyId: str = Query(...), secretKey: str = Query(...)):
+    """Saves Alpaca API Key ID and Secret Key locally to disk."""
+    try:
+        alpaca_manager.save_config(api_key_id=apiKeyId, secret_key=secretKey)
+        return {"success": True, "message": "Alpaca credentials saved successfully."}
+    except Exception as e:
+        logger.error(f"Failed to save Alpaca credentials: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/schwab/login")
+def get_schwab_login_url():
+    """Generates the Schwab OAuth consent URL."""
+    try:
+        url = schwab_manager.get_consent_url()
+        return {"url": url}
+    except Exception as e:
+        logger.error(f"Failed to generate login URL: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/schwab/callback", response_class=HTMLResponse)
+async def schwab_oauth_callback(code: str = Query(...)):
+    """Handles the OAuth redirection from Schwab, exchanges the code for tokens, and closes the popup."""
+    success = await schwab_manager.exchange_code_for_tokens(code)
+    if success:
+        return """
+        <html>
+            <head>
+                <title>Authentication Successful</title>
+                <style>
+                    body {
+                        background-color: #070913;
+                        color: #10b981;
+                        font-family: sans-serif;
+                        text-align: center;
+                        padding-top: 50px;
+                    }
+                    .box {
+                        display: inline-block;
+                        border: 1px solid #10b981;
+                        padding: 30px;
+                        border-radius: 12px;
+                        background-color: rgba(16, 185, 129, 0.05);
+                    }
+                </style>
+                <script>
+                    setTimeout(function() {
+                        if (window.opener) {
+                            window.opener.postMessage({ type: 'SCHWAB_AUTH_SUCCESS' }, '*');
+                        }
+                        window.close();
+                    }, 1500);
+                </script>
+            </head>
+            <body>
+                <div class="box">
+                    <h2>Authentication Successful!</h2>
+                    <p>Schwab tokens saved successfully. This window will close automatically...</p>
+                </div>
+            </body>
+        </html>
+        """
+    else:
+        return """
+        <html>
+            <head>
+                <title>Authentication Failed</title>
+                <style>
+                    body {
+                        background-color: #070913;
+                        color: #f43f5e;
+                        font-family: sans-serif;
+                        text-align: center;
+                        padding-top: 50px;
+                    }
+                    .box {
+                        display: inline-block;
+                        border: 1px solid #f43f5e;
+                        padding: 30px;
+                        border-radius: 12px;
+                        background-color: rgba(244, 63, 94, 0.05);
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="box">
+                    <h2>Authentication Failed</h2>
+                    <p>Failed to exchange code for tokens. Please check your console/logs or try again.</p>
+                </div>
+            </body>
+        </html>
+        """
+
+@app.websocket("/api/orderflow/live")
+async def websocket_schwab_endpoint(websocket: WebSocket, symbol: str = "SPY", provider: str = "schwab"):
+    """WebSocket proxy endpoint that relays live streaming data (Schwab or Alpaca) directly to the frontend client."""
+    await websocket.accept()
+    logger.info(f"WebSocket client connected to live order flow proxy for {symbol} via {provider}")
+    
+    stop_event = asyncio.Event()
+    
+    def handle_schwab_message(msg_str: str):
+        # Dispatch the send coroutine into the event loop
+        asyncio.create_task(websocket.send_text(msg_str))
+        
+    if provider.lower() == "alpaca":
+        run_task = asyncio.create_task(
+            run_alpaca_ws_proxy(symbol, handle_schwab_message, stop_event)
+        )
+    else:
+        run_task = asyncio.create_task(
+            run_schwab_ws_proxy(symbol, handle_schwab_message, stop_event)
+        )
+    
+    try:
+        while True:
+            # Maintain connection and listen for heartbeat/messages from client
+            data = await websocket.receive_text()
+            # Ignore/log client messages
+            logger.debug(f"Client message on live socket: {data}")
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket client disconnected from live order flow proxy for {symbol}")
+    finally:
+        # Trigger cleanup in streamer thread
+        stop_event.set()
+        await run_task
 
 if __name__ == "__main__":
     import uvicorn

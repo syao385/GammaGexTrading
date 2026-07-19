@@ -8,7 +8,7 @@ echo [1/3] Verifying and downloading environment dependencies...
 echo.
 
 :: Run python app in background
-start "Gamma GEX Server" cmd /c "uv run --with fastapi --with uvicorn --with yfinance --with numpy --with scipy --with pandas --with python-multipart python -m backend.app"
+start "Gamma GEX Server" cmd /c "uv run --with fastapi --with uvicorn --with yfinance --with numpy --with scipy --with pandas --with python-multipart --with httpx --with websockets python -m backend.app"
 
 echo [2/3] Waiting 5 seconds for FastAPI server to initialize...
 timeout /t 5 /nobreak > nul

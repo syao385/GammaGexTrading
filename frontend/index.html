@@ -9,7 +9,7 @@
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- CSS Style Link -->
-    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="index.css?v=2">
     <!-- Chart.js for Quantitative Data -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -34,6 +34,9 @@
                 </button>
                 <button class="menu-item" data-tab="backtesting">
                     <i class="fa-solid fa-rotate-left"></i><span>Backtester</span>
+                </button>
+                <button class="menu-item" data-tab="order-flow">
+                    <i class="fa-solid fa-fingerprint"></i><span>Order Flow Execution</span>
                 </button>
                 <button class="menu-item" data-tab="strategy-guide">
                     <i class="fa-solid fa-book-open"></i><span>Strategy Guide</span>
@@ -63,6 +66,7 @@
                         </select>
                     </div>
                     <button id="refresh-btn" class="btn btn-secondary"><i class="fa-solid fa-rotate"></i> Refresh</button>
+                    <button id="settings-btn" class="btn btn-secondary" title="API Settings"><i class="fa-solid fa-gear"></i> Settings</button>
                     <span id="last-updated" class="timestamp">Last Sync: --:--:--</span>
                 </div>
             </header>
@@ -516,6 +520,249 @@
                 </div>
             </div>
 
+            <!-- TAB 6: Order Flow Execution -->
+            <div id="order-flow" class="tab-content">
+                <div class="order-flow-layout">
+                    <!-- Left Column: Controls & Alert Log -->
+                    <div class="order-flow-sidebar-panel">
+                        <!-- Stream Settings & Controls -->
+                        <div class="card form-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-sliders"></i> Stream Configuration</h3>
+                                <span class="card-subtitle">Select pricing mode and aggregate settings</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="of-feed-mode">Data Feed Mode:</label>
+                                    <select id="of-feed-mode" class="dropdown btn-full">
+                                        <option value="simulation" selected>High-Fidelity Simulation</option>
+                                        <option value="schwab">Live Schwab API Connection</option>
+                                        <option value="alpaca">Live Alpaca Markets (Free)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="of-tick-consolidation">Tick Consolidation:</label>
+                                    <select id="of-tick-consolidation" class="dropdown btn-full">
+                                        <option value="0.05">0.05 Ticks (Options Spread)</option>
+                                        <option value="0.10">0.10 Ticks (Fine Bins)</option>
+                                        <option value="0.25">0.25 Ticks (Consolidated)</option>
+                                        <option value="0.50" selected>0.50 Ticks (Medium Bins)</option>
+                                        <option value="1.00">1.00 Ticks (Macro Bins)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="of-heatmap-contrast">Heatmap Contrast:</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="of-heatmap-contrast" min="1" max="100" value="35" class="slider-input">
+                                        <span id="of-contrast-val" class="slider-value">35%</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="of-bubble-scale">Trade Bubble Scale:</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="of-bubble-scale" min="1" max="5" value="2" step="0.5" class="slider-input">
+                                        <span id="of-bubble-val" class="slider-value">2.0x</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Simulation Controls -->
+                        <div class="card form-card" id="of-sim-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-gamepad"></i> Offline Scenario Simulator</h3>
+                                <span class="card-subtitle">Practice sniper entries at structural walls</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="simulator-controls-buttons">
+                                    <button id="sim-btn-absorption" class="btn btn-secondary btn-full margin-bottom"><i class="fa-solid fa-shield-halved"></i> Absorption at Put Wall</button>
+                                    <button id="sim-btn-breakout" class="btn btn-primary btn-full margin-bottom"><i class="fa-solid fa-bolt"></i> Breakout at GEX Flip</button>
+                                    <button id="sim-btn-reset" class="btn btn-danger btn-full"><i class="fa-solid fa-rotate-left"></i> Reset Simulation</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Execution Metrics Card -->
+                        <div class="card metrics-card" style="margin-bottom: 12px;">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-gauge-high"></i> Advanced Metrics</h3>
+                                <span class="card-subtitle">Real-time order book analytics & hedging flow</span>
+                            </div>
+                            <div class="card-body" style="display:flex; flex-direction:column; align-items:center; gap:12px; padding: 12px;">
+                                <!-- Speedometer SVG Gauge -->
+                                <div class="gauge-wrapper" style="position:relative; width:150px; height:85px; display: flex; flex-direction: column; align-items: center; margin-bottom: 4px;">
+                                    <svg width="140" height="75" viewBox="0 0 140 75" style="overflow: visible;">
+                                        <!-- Arc path -->
+                                        <path d="M 15 70 A 55 55 0 0 1 125 70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round" />
+                                        <path d="M 15 70 A 55 55 0 0 1 70 15" fill="none" stroke="url(#redYellowGradient)" stroke-width="10" />
+                                        <path d="M 70 15 A 55 55 0 0 1 125 70" fill="none" stroke="url(#yellowGreenGradient)" stroke-width="10" />
+                                        
+                                        <defs>
+                                            <linearGradient id="redYellowGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#f43f5e" />
+                                                <stop offset="100%" stop-color="#f59e0b" />
+                                            </linearGradient>
+                                            <linearGradient id="yellowGreenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#f59e0b" />
+                                                <stop offset="100%" stop-color="#10b981" />
+                                            </linearGradient>
+                                        </defs>
+                                        
+                                        <!-- Needle -->
+                                        <line id="gauge-needle" x1="70" y1="70" x2="70" y2="25" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" transform="rotate(0 70 70)" style="transition: transform 0.4s ease-out; transform-origin: 70px 70px;" />
+                                        <circle cx="70" cy="70" r="5" fill="#ffffff" />
+                                    </svg>
+                                    <div id="gauge-val" style="font-size:12px; font-weight:700; color:var(--text-primary); margin-top: 4px;">0.0 K / min</div>
+                                    <div style="font-size:9px; color:var(--text-secondary); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-top: 2px;">Hedging Flow Pressure</div>
+                                </div>
+                                
+                                <!-- Metrics grid -->
+                                <div style="width:100%; display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                                    <div>
+                                        <span style="color:var(--text-secondary); display:block;">Max Gamma Strike</span>
+                                        <strong id="metric-max-gamma" style="color:var(--text-primary); font-size:12px;">$0.00</strong>
+                                    </div>
+                                    <div>
+                                        <span style="color:var(--text-secondary); display:block;">MLOFI Skew</span>
+                                        <strong id="metric-mlofi" style="color:var(--text-primary); font-size:12px;">0 (Neutral)</strong>
+                                    </div>
+                                    <div>
+                                        <span style="color:var(--text-secondary); display:block;">LOB CoG</span>
+                                        <strong id="metric-cog" style="color:var(--text-primary); font-size:11px;">$0.00 / $0.00</strong>
+                                    </div>
+                                    <div>
+                                        <span style="color:var(--text-secondary); display:block;">Sonar Pulse</span>
+                                        <strong id="metric-sonar" style="color:#10b981; font-size:11px; font-weight: 700;">NORMAL</strong>
+                                    </div>
+                                    <div style="grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
+                                        <span style="color:var(--text-secondary); display:block;">Detected Candle Pattern</span>
+                                        <strong id="metric-candle" style="color:#3b82f6; font-size:11px; font-weight: 700;">None</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Real-time Alerts Log -->
+                        <div class="card log-card">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-list-check"></i> Intraday Execution Alerts</h3>
+                                <span class="card-subtitle">Real-time alerts triggered by order flow confluence</span>
+                            </div>
+                            <div id="orderflow-alerts-container" class="orderflow-alerts-log">
+                                <div class="alert-item system-alert">
+                                    <span class="alert-time">17:31:18</span>
+                                    <span class="alert-msg">Order Flow Engine initialized. Ready to receive feed.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: DOM Ladder & Visual Charts -->
+                    <div class="order-flow-charts-container">
+                        <!-- Unified Confluence Playbook Assistant -->
+                        <div id="confluence-playbook-card" class="card playbook-card" style="margin-bottom: 12px; padding: 12px 16px; background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="background: rgba(59, 130, 246, 0.15); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(59, 130, 246, 0.25);">
+                                        <i class="fa-solid fa-brain" style="color: #3b82f6; font-size: 20px;"></i>
+                                    </div>
+                                    <div>
+                                        <h4 style="margin: 0; color: #ffffff; font-size: 14px; font-weight: 600;">CONFLUENCE PLAYBOOK ASSISTANT</h4>
+                                        <div id="playbook-setup-regime" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Evaluating current spot and options walls...</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; max-width: 450px; margin-left: 20px;">
+                                    <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Confluence:</span>
+                                    <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                                        <div id="playbook-strength-bar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.6s ease; border-radius: 3px;"></div>
+                                    </div>
+                                    <span id="playbook-strength-text" style="font-size: 11px; font-weight: 700; color: #3b82f6; min-width: 32px; text-align: right;">0%</span>
+                                </div>
+                                <div id="playbook-action-box" style="padding: 6px 12px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); font-size: 12px; font-weight: 700; color: #ffffff; min-width: 250px; text-align: center;">
+                                    WAITING FOR MARKET FEEDS
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- DOM Ladder & Footprint Chart Split -->
+                        <div class="order-flow-charts-grid">
+                            <!-- Footprint Chart Panel -->
+                            <div class="card chart-card footprint-chart-panel">
+                                <div class="card-header-flex">
+                                    <div>
+                                        <h3 style="display:inline-flex; align-items:center; gap:8px;">
+                                            <i class="fa-solid fa-fingerprint"></i> Consolidated Footprint Chart
+                                            <span id="orderflow-stream-status" class="status-badge" style="padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; background-color:rgba(107,114,128,0.15); color:var(--text-secondary); vertical-align:middle;">IDLE</span>
+                                        </h3>
+                                        <span class="card-subtitle" style="display:block;">Diagonal Bid/Ask Volume Imbalances with GEX Level overlays</span>
+                                    </div>
+                                    <div class="legend-indicators">
+                                        <span class="legend-item"><span class="legend-color buy-imbalance-bg"></span>Buy Imbalance</span>
+                                        <span class="legend-item"><span class="legend-color sell-imbalance-bg"></span>Sell Imbalance</span>
+                                        <span class="legend-item"><span class="legend-color poc-bg"></span>POC</span>
+                                    </div>
+                                </div>
+                                <div class="canvas-wrapper">
+                                    <canvas id="footprint-canvas"></canvas>
+                                </div>
+                                <!-- Footprint Stats Rows -->
+                                <div id="footprint-stats-wrapper" class="footprint-stats-row">
+                                    <!-- Injected dynamically -->
+                                </div>
+                            </div>
+
+                            <!-- DOM Ladder Panel -->
+                            <div class="card table-card dom-ladder-panel">
+                                <div class="card-header">
+                                    <h3><i class="fa-solid fa-stairs"></i> DOM Ladder</h3>
+                                    <span class="card-subtitle">Depth of Market resting liquidity</span>
+                                </div>
+                                <div class="dom-table-wrapper">
+                                    <table id="dom-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Bid Size</th>
+                                                <th>Price</th>
+                                                <th>Ask Size</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Injected dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bookmap / Heatmap & Cumulative Delta Panel -->
+                        <div class="card chart-card bookmap-heatmap-panel" style="display: flex; flex-direction: column;">
+                            <div class="card-header-flex">
+                                <div>
+                                    <h3 style="display:inline-flex; align-items:center; gap:8px;">
+                                        <i class="fa-solid fa-fire"></i> Bookmap Heatmap & Cumulative Delta
+                                        <span id="orderflow-stream-status-bm" class="status-badge" style="padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; background-color:rgba(107,114,128,0.15); color:var(--text-secondary); vertical-align:middle;">IDLE</span>
+                                    </h3>
+                                    <span class="card-subtitle" style="display:block;">Visualizes resting limit order size (L2 DOM) and aggressive trades around GEX levels</span>
+                                </div>
+                                <div class="panel-header-actions" style="display: flex; gap: 6px;">
+                                    <button id="toggle-cum-delta-btn" class="btn btn-secondary btn-sm" title="Toggle Cumulative Delta subchart"><i class="fa-solid fa-chart-line"></i> Toggle Delta Chart</button>
+                                    <button id="toggle-mlofi-btn" class="btn btn-secondary btn-sm" title="Toggle MLOFI overlay line"><i class="fa-solid fa-arrows-split-up-and-left"></i> Toggle MLOFI</button>
+                                </div>
+                            </div>
+                            <!-- Split layout inside Bookmap Card -->
+                            <div class="bookmap-split-container" style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px;">
+                                <div class="canvas-wrapper" style="flex-grow: 3; min-height: 250px; position: relative;">
+                                    <canvas id="bookmap-canvas"></canvas>
+                                </div>
+                                <div id="cum-delta-wrapper" class="canvas-wrapper" style="flex-grow: 1; min-height: 100px; position: relative;">
+                                    <canvas id="cum-delta-canvas"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- TAB 5: Strategy Guide -->
             <div id="strategy-guide" class="tab-content">
                 <div class="card text-card full-width-card">
@@ -544,13 +791,98 @@
                             <li><strong>Call Wall Reversals:</strong> If spot is overextended upwards towards the Call Wall, dealer buying halts once they are fully delta-hedged. If the price stalls, decay (Charm) forces dealers to sell their stock hedge, creating a swift reversal down.</li>
                             <li><strong>Put Wall Reversals:</strong> If spot drops to the Put Wall, dealer selling ceases. A slight bounce in spot forces dealers to quickly cover their short hedges, triggering an OPEX short-covering bounce.</li>
                         </ul>
+
+                        <h4>4. The Confluence Framework: GEX + Order Flow + Price Action</h4>
+                        <p>To trade with institutional precision, we combine three layers of market metrics:</p>
+                        <ul>
+                            <li><strong>GEX Levels (The Map):</strong> Identifies the key structural price areas where price action is likely to stall or accelerate (Call Wall, Put Wall, GEX Flip level, and Max Gamma Strike).</li>
+                            <li><strong>Order Flow (The Engine):</strong> Monitors real-time transaction dynamics at these boundaries. Tracks resting depth shifts (MLOFI), execution speed (speedometer dial), passive support (Center of Gravity paths), and buying/selling exhaustion (Sonar Pulse alerts).</li>
+                            <li><strong>Price Action (The Trigger):</strong> Uses footprint bar candlestick patterns (Hammer at Put Wall, Shooting Star at Call Wall, Marubozu breakouts at the Flip) to trigger entries and define precise stop-losses (e.g. Stop-loss placed just 1 tick behind the hammer wick).</li>
+                        </ul>
                     </div>
                 </div>
             </div>
         </main>
     </div>
     
+    <!-- Settings Modal Dialog -->
+    <div id="settings-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content card">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+                <h3><i class="fa-solid fa-gear"></i> Live Data Feed Configuration</h3>
+                <button id="close-settings-btn" class="btn btn-secondary btn-sm" style="padding: 4px 8px;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="provider-select" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">Live Data Provider:</label>
+                    <select id="provider-select" class="btn-full" style="background-color:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:#fff; font-family:var(--font-primary);">
+                        <option value="schwab" selected>Charles Schwab API</option>
+                        <option value="alpaca">Alpaca Markets (IEX Free)</option>
+                    </select>
+                </div>
+
+                <form id="settings-form" onsubmit="event.preventDefault();">
+                    <!-- Schwab Settings Section -->
+                    <div id="schwab-settings-section">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="schwab-app-key" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">App Key (Client ID):</label>
+                            <input type="password" id="schwab-app-key" class="btn-full" style="background-color:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:#fff;" placeholder="Enter Schwab App Key" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="schwab-app-secret" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">App Secret (Client Secret):</label>
+                            <input type="password" id="schwab-app-secret" class="btn-full" style="background-color:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:#fff;" placeholder="Enter Schwab App Secret" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 18px;">
+                            <label for="schwab-redirect-uri" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">Redirect URI:</label>
+                            <input type="text" id="schwab-redirect-uri" class="btn-full" style="background-color:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:var(--text-muted);" value="https://127.0.0.1:8000/api/schwab/callback" disabled>
+                        </div>
+                        <div class="modal-actions-buttons" style="display:flex; gap:12px; margin-bottom: 20px;">
+                            <button type="button" id="schwab-save-btn" class="btn btn-primary" style="flex:1;"><i class="fa-solid fa-floppy-disk"></i> Save Schwab Keys</button>
+                            <button type="button" id="schwab-auth-btn" class="btn btn-success" style="flex:1;" disabled><i class="fa-solid fa-right-to-bracket"></i> Login / Authenticate</button>
+                        </div>
+                    </div>
+
+                    <!-- Alpaca Settings Section -->
+                    <div id="alpaca-settings-section" style="display:none;">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="alpaca-key-id" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">Alpaca API Key ID:</label>
+                            <input type="password" id="alpaca-key-id" class="btn-full" style="background-color:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:#fff;" placeholder="Enter Alpaca API Key ID" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 18px;">
+                            <label for="alpaca-secret-key" style="display:block; margin-bottom: 6px; font-size:14px; color:var(--text-secondary);">Alpaca Secret Key:</label>
+                            <input type="password" id="alpaca-secret-key" class="btn-full" style="background-color:rgba(255,255,255,0.05); border:1px solid var(--border-color); border-radius:8px; padding:10px; color:#fff;" placeholder="Enter Alpaca Secret Key" autocomplete="off">
+                        </div>
+                        <div class="modal-actions-buttons" style="margin-bottom: 20px;">
+                            <button type="button" id="alpaca-save-btn" class="btn btn-primary btn-full"><i class="fa-solid fa-floppy-disk"></i> Save Alpaca Keys</button>
+                        </div>
+                    </div>
+                </form>
+                <hr class="divider">
+                <div class="settings-status-box" style="margin-top:16px; padding:12px; border-radius:8px; background-color:rgba(255,255,255,0.02); font-size:13px;">
+                    <!-- Schwab Status Block -->
+                    <div id="schwab-status-block">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <span class="status-label" style="color:var(--text-secondary);">Schwab API Keys:</span>
+                            <span id="schwab-config-status" class="status-badge" style="padding: 2px 8px; border-radius: 4px; font-weight:700; background-color:rgba(244,63,94,0.15); color:var(--color-red);">Unconfigured</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span class="status-label" style="color:var(--text-secondary);">Schwab Streaming Auth:</span>
+                            <span id="schwab-auth-status" class="status-badge" style="padding: 2px 8px; border-radius: 4px; font-weight:700; background-color:rgba(244,63,94,0.15); color:var(--color-red);">Disconnected</span>
+                        </div>
+                    </div>
+                    <!-- Alpaca Status Block -->
+                    <div id="alpaca-status-block" style="display:none;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span class="status-label" style="color:var(--text-secondary);">Alpaca API Keys:</span>
+                            <span id="alpaca-config-status" class="status-badge" style="padding: 2px 8px; border-radius: 4px; font-weight:700; background-color:rgba(244,63,94,0.15); color:var(--color-red);">Unconfigured</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- JS App Script Link -->
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 </html>

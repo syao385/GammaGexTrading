@@ -68,7 +68,7 @@ Used for scanning your entire watchlist simultaneously.
 *   **Watchlist Manager**: Add or remove symbols using the pill-badges (saved in your local browser).
 *   **Filter Alerts Dropdown**: Filter your scan results for specific setups (e.g., show only tickers with *Bullish Alerts*, *Bearish Alerts*, *UOA*, or *Wall Proximity*).
 *   **Collapsible Rows**: Click on any row in the screener table to expand its sub-panel. This displays the **full Alert History Log with timestamps** and details like total Net GEX, Vanna, and Charm.
-*   **OS Desktop Notifications**: Native notifications will pop up on your Windows desktop whenever a new alert crosses the threshold.
+*   **OS Desktop Notifications**: Native notifications will pop up on your Windows desktop whenever a new GEX, Order Flow, or Price Action alert fires.
 
 ### Tab 3: GEX Validator
 Validates self-calculated GEX profiles against commercial CSV files (FlashAlpha, OptionsFlow, Quantwheel).
@@ -81,13 +81,76 @@ Allows you to run simulations on synthetic GEX/OVI options proxies over the past
 *   Select the ticker, strategy type (GEX Flip, OVI Breakout, Wall Reversion), and trade parameters.
 *   Click **Run Backtest Simulation** to view metrics: Total Return, Sharpe Ratio, Max Drawdown, and Equity Curve.
 
+### Tab 5: Order Flow Execution
+Provides micro-level execution confirmation (real-time order flow) around key macro GEX levels.
+*   **Data Feed Mode Dropdown**: Toggle between High-Fidelity Simulation (for scenario-based training) and Live feeds (Charles Schwab or Alpaca Markets).
+*   **Consolidated Footprint Chart**: Displays aggressive trade executions grouped into price buckets showing **Bid Volume (Sells) | Ask Volume (Buys)**.
+    *   *POC (Point of Control)*: Outlined in purple; indicates the price bucket with the highest transacted volume in that bar.
+    *   *Diagonal Imbalances*: Highlighted in Green (Buy Imbalance) or Red (Sell Imbalance) when ask/bid size exceeds its diagonal counterpart by $\ge 3.5\times$.
+*   **Bookmap Heatmap & Cumulative Delta**:
+    *   *Heatmap Background*: Visualizes limit order book depth (resting orders). Bright orange bands indicate heavy resting limit orders (liquidity walls).
+    *   *Trade Bubbles*: Circles represent aggressive market order executions. Green represents buy orders; red represents sell orders. Sizes are scaled logarithmically.
+    *   *Cumulative Delta sub-chart*: Displays the running divergence between aggressive buying and aggressive selling volume.
+*   **DOM Ladder (Depth of Market)**: 
+    *   *Bid Size Column*: Lists the number of limit buy contracts/shares resting at prices below the last traded price.
+    *   *Price Column*: The center column indicating price ticks. The active price row is highlighted.
+    *   *Ask Size Column*: Lists the number of limit sell contracts/shares resting at prices above the last traded price.
+
 ---
 
-## 3. Daily Execution Checklist
+## 3. How to Read and Interpret the DOM Ladder & Order Flow
+Operate the DOM Ladder, Footprint, and Bookmap widgets as a unified execution system:
+
+1.  **Liquidity Stacking (Support/Resistance Shelves)**: 
+    *   Look at the DOM Ask Size and Bid Size columns. If a price level displays a massive size (e.g., 1,500 vs. typical 80 at other levels), a large limit order is resting there.
+    *   On the **Bookmap Heatmap**, this matches a thick **horizontal orange band**. 
+    *   *Trading Action*: Expect the price to stall or bounce here. Do not enter a long position right below a large Ask block unless you see it getting actively consumed.
+2.  **Liquidity Pulling (Cancelled Orders / Spoofing)**:
+    *   If the spot price approaches a resting limit size on the DOM, watch if the size rapidly decreases (e.g., from 1,200 to 40) without corresponding executions (bubbles).
+    *   *Trading Action*: This indicates a seller/buyer pulling their order. The barrier has collapsed, making it highly likely that price will break through that level easily.
+3.  **Bid-Ask Ratio Imbalance (Order Book Skew)**:
+    *   Compare the cumulative volume of the top 5 bid rows vs. top 5 ask rows on the DOM.
+    *   A high Bid-Ask ratio (bids outweighing asks) indicates buy-side support. If the **Cumulative Delta line** is also trending up, buyers are aggressively taking liquidity.
+4.  **Footprint Imbalance Stack (Breakout Confirmation)**:
+    *   When the spot price breaks a GEX Flip Level or a Wall, look at the **Footprint Chart**.
+    *   If you see 3 consecutive green highlight cells stacked vertically on a breakout bar, it confirms institutional aggressive buying momentum. This confirms a high-probability breakout entry.
+
+---
+
+## 4. Advanced Order Flow Metrics & Confluence Assistant
+To make reading multiple order book indicators easy and actionable, the system calculates and displays advanced metrics that bridge GEX, DOM, and Price Action:
+
+1.  **LOB Center of Gravity (CoG):**
+    *   *Formula:* Calculated as the volume-weighted average price of resting liquidity over the top 5 bid and ask rows:
+        \[\text{CoG} = \frac{\sum (Price \cdot Size)}{\sum Size}\]
+    *   *Visual:* Displayed as a dotted green line (Bid CoG support path) and a dotted red line (Ask CoG resistance path) directly on the Bookmap timeline.
+    *   *Interpretation:* If Bid CoG rises alongside price, passive buyers are stepping up bids to support the trend. If Ask CoG falls during a bounce, sellers are blocking price from rising.
+2.  **Modified Limit Order Flow Imbalance (MLOFI):**
+    *   *Formula:* Sums the delta change of resting contracts at the top 5 DOM levels to measure book stacking velocity:
+        \[\text{MLOFI} = \Delta \text{Bids} - \Delta \text{Asks}\]
+    *   *Visual:* Highlighted numerically in the sidebar and plotted as a secondary orange line chart on the Cumulative Delta timeline.
+    *   *Interpretation:* Positive values indicate limit bids are stacking faster than asks (buying pressure); negative values indicate offers are stacking (selling pressure).
+3.  **Real-Time Dealer Hedging Pressure (Speedometer):**
+    *   *Formula:* Maps price momentum and options dealer gamma multipliers (e.g. Negative GEX accelerates price speed, Positive GEX dampens price speed) into shares/min hedging flow velocity.
+    *   *Visual:* The rotating needle and numerical dial on the sidebar speedometer card.
+    *   *Interpretation:* Points left (red) during aggressive short-hedging cover runs; points right (green) during dealer buying hedge expansions.
+4.  **Sonar Pulse Divergence:**
+    *   *Formula:* Evaluates the ratio of market execution volume relative to absolute limit size shifts over a 10-tick rolling window.
+    *   *Visual:* Flashes an orange warning banner on the Bookmap canvas.
+    *   *Interpretation:* Triggers if the market is executing heavy buying volume but price stops moving higher due to a massive passive wall of institutional sellers. It warns you to **stay flat / avoid chasing**.
+5.  **Footprint Candlestick Pattern Triggers:**
+    *   Scans the wicks and bodies of footprint bars to identify standard Price Action reversal patterns in real-time (Hammers, Shooting Stars, Bullish/Bearish Engulfing, Marubozus).
+6.  **Confluence Playbook Assistant:**
+    *   Combines **GEX Levels (The Map)**, **Order Flow (The Engine)**, and **Price Action (The Trigger)** to output setup confluences (e.g. *Wall Reversion support*, *Flip breakouts*) with a percentage confidence rating and a direct options trade recommendation.
+
+---
+
+## 5. Daily Execution Checklist
 
 ### 1. Premarket (08:30 - 09:30 EST)
 *   [ ] Open the **Market Screener** and click **Scan Watchlist**.
-*   [ ] Filter alerts by **Wall Proximity** and **Flip Proximity** to identify which watchlisted stocks are opening near major inflection levels.
+*   [ ] Filter alerts by **Wall Proximity** and **Flip Proximity** to identify which watchlisted stocks are opening near major GEX inflection levels.
+*   [ ] Check the screener's **Desk Alerts** (pop-up warnings) for daily price action triggers (like Hammers or Shooting Stars at walls) and options OVI/GEX confluences.
 *   [ ] Check the stats banner of **SPY** and **QQQ** to establish the macro volatility regime (Positive vs. Negative Gamma). If the indices are in Negative Gamma, expect a high-volatility trend day.
 *   [ ] Check the **Active GEX Strategy Playbook** for your target symbols to note exact trigger prices.
 
@@ -100,7 +163,11 @@ Allows you to run simulations on synthetic GEX/OVI options proxies over the past
 *   [ ] In a **Positive Gamma** environment, prices tend to mean-revert. If Spot touches the Put Wall or Call Wall:
     *   Open **Put Wall Credit Spreads (Bull Put)** at the Put Wall.
     *   Open **Call Wall Credit Spreads (Bear Call)** at the Call Wall.
-*   [ ] Collect theta decay. Exit positions if the spot breaks and closes outside the walls.
+*   [ ] Verify the setup on the **Order Flow Execution** tab:
+    *   Is the **Confluence Playbook Assistant** showing a confidence rating $> 60\%$?
+    *   Is **MLOFI** stacking in your direction and is the **Hedging Speedometer** stabilizing?
+    *   Has a **Footprint Hammer/Shooting Star** candle closed at the wall?
+*   [ ] Place your stop-loss exactly 1 tick behind the tail/wick of the footprint trigger candle.
 
 ### 4. End-of-Day (15:30 - 16:00 EST)
 *   [ ] Monitor the close relative to the GEX Flip Level. 

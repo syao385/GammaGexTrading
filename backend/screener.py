@@ -46,17 +46,58 @@ class MarketScreener:
                 # Generate Alerts
                 alerts = []
                 
+                # Fetch daily history for Price Action scan
+                try:
+                    import yfinance as yf
+                    hist = yf.Ticker(symbol).history(period="5d")
+                    if not hist.empty and len(hist) >= 2:
+                        prev_row = hist.iloc[-2]
+                        cur_row = hist.iloc[-1]
+                        
+                        o_prev, h_prev, l_prev, c_prev = prev_row['Open'], prev_row['High'], prev_row['Low'], prev_row['Close']
+                        o_cur, h_cur, l_cur, c_cur = cur_row['Open'], cur_row['High'], cur_row['Low'], cur_row['Close']
+                        
+                        body_cur = abs(c_cur - o_cur)
+                        range_cur = h_cur - l_cur
+                        
+                        if range_cur > 0:
+                            upper_w = h_cur - max(o_cur, c_cur)
+                            lower_w = min(o_cur, c_cur) - l_cur
+                            
+                            # 1. Hammer / Pin Bar near Put Wall
+                            if lower_w > body_cur * 1.8 and upper_w < body_cur * 0.5:
+                                if abs(c_cur - put_wall) / c_cur <= 0.015:
+                                    alerts.append(f"Price Action: Daily Hammer at Put Wall ({put_wall:.1f})")
+                            
+                            # 2. Shooting Star near Call Wall
+                            if upper_w > body_cur * 1.8 and lower_w < body_cur * 0.5:
+                                if abs(c_cur - call_wall) / c_cur <= 0.015:
+                                    alerts.append(f"Price Action: Daily Shooting Star at Call Wall ({call_wall:.1f})")
+                                    
+                            # 3. Bullish Engulfing near Put Wall or Flip Level
+                            if (c_prev < o_prev) and (c_cur > o_cur) and (c_cur > o_prev) and (o_cur < c_prev):
+                                if (abs(c_cur - put_wall) / c_cur <= 0.015) or (abs(c_cur - flip) / c_cur <= 0.015):
+                                    alerts.append(f"Price Action: Daily Bullish Engulfing near key support")
+                except Exception as pa_err:
+                    logger.warning(f"Screener: failed Price Action check for {symbol}: {pa_err}")
+                
                 # Alert: Spot proximity to walls
                 if abs(price - call_wall) / price <= 0.005:
                     alerts.append(f"Spot near Call Wall ({call_wall:.1f}) - Potential resistance/reversal")
                 elif abs(price - put_wall) / price <= 0.005:
                     alerts.append(f"Spot near Put Wall ({put_wall:.1f}) - Potential support/reversal")
                     
-                # Alert: OVI signals
+                # Alert: OVI signals and Order Flow confluences
                 if ovi > 0.4:
-                    alerts.append("Bullish OVI Imbalance - Large institutional call volume")
+                    if price >= flip:
+                        alerts.append("Confluence: Bullish OVI in Positive Gamma Regime")
+                    else:
+                        alerts.append("Bullish OVI Imbalance - Large institutional call volume")
                 elif ovi < -0.4:
-                    alerts.append("Bearish OVI Imbalance - Large institutional put volume")
+                    if price < flip:
+                        alerts.append("Confluence: Bearish OVI in Negative Gamma Regime")
+                    else:
+                        alerts.append("Bearish OVI Imbalance - Large institutional put volume")
                     
                 # Alert: Gamma Regime Flip warning
                 if abs(dist_flip) <= 0.5:
