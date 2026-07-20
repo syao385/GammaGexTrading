@@ -5,6 +5,8 @@ import yfinance as yf
 
 from backend.data_fetcher import DataFetcher
 from backend.gex_engine import GEXEngine
+from backend.volume_profile import VolumeProfileCalculator
+from backend.smart_money_detector import SmartMoneyDetector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,7 +18,8 @@ class MarketScreener:
 
     def screen_symbols(self, symbols: list = None) -> list:
         """
-        Screens a watchlist of symbols and aggregates GEX, walls, OVI, skew, setups, and alerts.
+        Screens a watchlist of symbols and aggregates GEX, walls, Volume Profile levels,
+        Smart Money setups (Breakers/FVGs), and the Playbook 10-point ASSET score.
         """
         if symbols is None:
             symbols = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'TSLA', 'NVDA']
@@ -27,7 +30,7 @@ class MarketScreener:
                 symbol = symbol.upper().strip()
                 logger.info(f"Screener: processing symbol {symbol}")
                 
-                # Fetch option chain (next 5 expirations is enough for rapid screening)
+                # Fetch option chain (next 5 expirations for screening speed)
                 raw_data = self.fetcher.fetch_options_chain(symbol, max_expirations=5)
                 
                 # Process GEX
@@ -52,14 +55,44 @@ class MarketScreener:
                 alerts = []
                 setups_triggered = []
                 
-                # Fetch daily history for Price Action and Setup scans
+                # 1. Fetch Daily History (for 25-day, 60-day Volume Profiles & basic technical filters)
                 hist = pd.DataFrame()
                 try:
                     hist = yf.Ticker(symbol).history(period="60d")
                 except Exception as hist_err:
-                    logger.warning(f"Screener: failed to fetch history for {symbol}: {hist_err}")
+                    logger.warning(f"Screener: failed to fetch daily history for {symbol}: {hist_err}")
                 
+                # 2. Fetch Intraday 5-minute History (for 5-day Volume Profile, FVG, & Breaker detection)
+                hist_5m = pd.DataFrame()
+                try:
+                    hist_5m = yf.Ticker(symbol).history(period="5d", interval="5m")
+                except Exception as h5m_err:
+                    logger.warning(f"Screener: failed to fetch 5m history for {symbol}: {h5m_err}")
+
+                # Default values for profiles
+                vp_5d = {"poc": 0.0, "vah": 0.0, "val": 0.0, "hvn": [], "lvn": []}
+                vp_25d = {"poc": 0.0, "vah": 0.0, "val": 0.0, "hvn": [], "lvn": []}
+                vp_60d = {"poc": 0.0, "vah": 0.0, "val": 0.0, "hvn": [], "lvn": []}
+                fvgs = []
+                breakers = {"bullish_breaker": None, "bearish_breaker": None, "bullish_mitigation": None, "bearish_mitigation": None}
+
                 if not hist.empty and len(hist) >= 20:
+                    # Calculate Volume Profiles
+                    # Day trading lookback: 5-day composite from 5-minute bars
+                    if not hist_5m.empty:
+                        vp_5d = VolumeProfileCalculator.calculate_volume_profile(hist_5m)
+                        fvgs = SmartMoneyDetector.detect_fvgs(hist_5m)
+                        breakers = SmartMoneyDetector.detect_breaker_and_mitigation_blocks(hist_5m)
+                    else:
+                        vp_5d = VolumeProfileCalculator.calculate_volume_profile(hist.tail(5))
+                        
+                    # Swing trading lookback: 25-day (5 weeks) from daily
+                    vp_25d = VolumeProfileCalculator.calculate_volume_profile(hist.tail(25))
+                    # Macro lookback: 60-day rolling from daily
+                    vp_60d = VolumeProfileCalculator.calculate_volume_profile(hist)
+
+                    # Technical indicators
+                    closes = hist['Close'].values
                     last_row = hist.iloc[-1]
                     prev_row = hist.iloc[-2]
                     
@@ -68,8 +101,10 @@ class MarketScreener:
                     
                     body_cur = abs(c_cur - o_cur)
                     range_cur = h_cur - l_cur
+                    vol_current = last_row['Volume']
+                    vol_avg_20 = hist['Volume'].iloc[-21:-1].mean()
                     
-                    # 1. Price Action: Hammer near Put Wall
+                    # Hammer / Shooting Star Price Action checks
                     if range_cur > 0:
                         upper_w = h_cur - max(o_cur, c_cur)
                         lower_w = min(o_cur, c_cur) - l_cur
@@ -78,47 +113,174 @@ class MarketScreener:
                             if abs(price - put_wall) / price <= 0.015:
                                 alerts.append(f"Price Action: Daily Hammer at Put Wall ({put_wall:.1f})")
                         
-                        # Price Action: Shooting Star near Call Wall
                         if upper_w > body_cur * 1.8 and lower_w < body_cur * 0.5:
                             if abs(price - call_wall) / price <= 0.015:
                                 alerts.append(f"Price Action: Daily Shooting Star at Call Wall ({call_wall:.1f})")
                                 
-                        # Price Action: Bullish Engulfing near key support
                         if (c_prev < o_prev) and (c_cur > o_cur) and (c_cur > o_prev) and (o_cur < c_prev):
                             if (abs(price - put_wall) / price <= 0.015) or (abs(price - flip) / price <= 0.015):
                                 alerts.append("Price Action: Daily Bullish Engulfing near support")
 
-                    # --- RUN ADVANCED TECHNICAL SETUPS ---
-                    
-                    # A. VCP Setup
+                    # Run Standard Setup Scans
                     vcp_detected, vcp_summary = self.detect_vcp_pattern(hist)
                     if vcp_detected:
                         setups_triggered.append("VCP Pattern")
                         alerts.append(f"VCP: {vcp_summary}")
                         
-                    # B. Breakout Setup
                     breakout_detected, breakout_desc = self.detect_breakout(hist, call_wall)
                     if breakout_detected:
                         setups_triggered.append("Breakout")
                         alerts.append(f"Breakout: {breakout_desc}")
                         
-                    # C. Unusual Volume / Options Sweep
                     unusual_vol_detected, vol_desc = self.detect_unusual_volume(hist, processed)
                     if unusual_vol_detected:
                         setups_triggered.append("Unusual Volume")
                         alerts.append(f"Volume: {vol_desc}")
                         
-                    # D. Mean Reversion
                     mean_rev_detected, mean_rev_desc = self.detect_mean_reversion(hist, call_wall, put_wall)
                     if mean_rev_detected:
                         setups_triggered.append("Mean Reversion")
                         alerts.append(f"Mean Rev: {mean_rev_desc}")
                         
-                    # E. Trend Continuation
                     trend_cont_detected, trend_desc = self.detect_trend_continuation(hist, flip)
                     if trend_cont_detected:
                         setups_triggered.append("Trend Continuation")
                         alerts.append(f"Trend: {trend_desc}")
+
+                    # Run Smart Money Scans
+                    if fvgs:
+                        active_fvgs = [f for f in fvgs if f['state'] == "active"]
+                        if active_fvgs:
+                            setups_triggered.append("Active FVG Imbalance")
+                            alerts.append(f"FVG: {len(active_fvgs)} active gaps on 5m chart")
+                    
+                    if breakers.get("bullish_breaker") or breakers.get("bearish_breaker"):
+                        setups_triggered.append("Breaker Block")
+                        breaker_type = "Bullish" if breakers.get("bullish_breaker") else "Bearish"
+                        alerts.append(f"Breaker: {breaker_type} structure shift on 5m chart")
+
+                    # --- COMPUTE 10-POINT PLAYBOOK SCORECARD ---
+                    bias_direction = "long" if price >= flip else "short"
+                    
+                    # 1. Catalyst & RVOL (Max 2.0 pts)
+                    cat_points = 0.0
+                    rvol_ratio = vol_current / vol_avg_20 if vol_avg_20 > 0 else 1.0
+                    if rvol_ratio >= 2.0:
+                        cat_points += 1.0
+                    if rvol_ratio >= 3.0 or unusual_vol_detected:
+                        cat_points += 1.0
+                    
+                    # 2. Index & HTF Alignment (Max 2.0 pts)
+                    align_points = 0.0
+                    ema_20_daily = pd.Series(closes).ewm(span=20, adjust=False).mean().iloc[-1]
+                    ema_50_daily = pd.Series(closes).ewm(span=50, adjust=False).mean().iloc[-1]
+                    stock_bullish_htf = price > ema_20_daily > ema_50_daily
+                    stock_bearish_htf = price < ema_20_daily < ema_50_daily
+                    
+                    if (bias_direction == "long" and stock_bullish_htf) or (bias_direction == "short" and stock_bearish_htf):
+                        align_points += 1.0
+                        
+                    spy_aligned = False
+                    try:
+                        if symbol == 'SPY':
+                            spy_aligned = (stock_bullish_htf if bias_direction == "long" else stock_bearish_htf)
+                        else:
+                            spy_hist = yf.Ticker('SPY').history(period="60d")
+                            if not spy_hist.empty:
+                                spy_closes = spy_hist['Close'].values
+                                spy_ema_20 = pd.Series(spy_closes).ewm(span=20, adjust=False).mean().iloc[-1]
+                                spy_ema_50 = pd.Series(spy_closes).ewm(span=50, adjust=False).mean().iloc[-1]
+                                if bias_direction == "long" and spy_closes[-1] > spy_ema_20 > spy_ema_50:
+                                    spy_aligned = True
+                                elif bias_direction == "short" and spy_closes[-1] < spy_ema_20 < spy_ema_50:
+                                    spy_aligned = True
+                    except Exception:
+                        pass
+                    if spy_aligned:
+                        align_points += 1.0
+
+                    # 3. Relative Strength (RS/RW) (Max 2.0 pts)
+                    rs_points = 0.0
+                    try:
+                        if symbol != 'SPY':
+                            perf_sym = (closes[-1] / closes[-2] - 1.0) * 100.0
+                            spy_hist = yf.Ticker('SPY').history(period="2d")
+                            if not spy_hist.empty and len(spy_hist) >= 2:
+                                perf_spy = (spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-2] - 1.0) * 100.0
+                                rs_daily_spread = perf_sym - perf_spy
+                                if (bias_direction == "long" and rs_daily_spread > 0) or (bias_direction == "short" and rs_daily_spread < 0):
+                                    rs_points += 1.0
+                                    
+                            if not hist_5m.empty and len(hist_5m) >= 5:
+                                sym_5d_perf = (closes[-1] / closes[-5] - 1.0) * 100.0
+                                spy_hist_5d = yf.Ticker('SPY').history(period="5d")
+                                if not spy_hist_5d.empty:
+                                    spy_5d_perf = (spy_hist_5d['Close'].iloc[-1] / spy_hist_5d['Close'].iloc[0] - 1.0) * 100.0
+                                    rs_5d_spread = sym_5d_perf - spy_5d_perf
+                                    if (bias_direction == "long" and rs_5d_spread > 0) or (bias_direction == "short" and rs_5d_spread < 0):
+                                        rs_points += 1.0
+                        else:
+                            # SPY RS vs QQQ fallback
+                            perf_sym = (closes[-1] / closes[-2] - 1.0) * 100.0
+                            qqq_hist = yf.Ticker('QQQ').history(period="2d")
+                            if not qqq_hist.empty and len(qqq_hist) >= 2:
+                                perf_qqq = (qqq_hist['Close'].iloc[-1] / qqq_hist['Close'].iloc[-2] - 1.0) * 100.0
+                                rs_daily_spread = perf_sym - perf_qqq
+                                if (bias_direction == "long" and rs_daily_spread > 0) or (bias_direction == "short" and rs_daily_spread < 0):
+                                    rs_points += 1.0
+                            rs_points += 1.0  # default second point for index base
+                    except Exception:
+                        pass
+
+                    # 4. Location / Zone (Linchpin) (Max 2.0 pts)
+                    loc_points = 0.0
+                    dist_call = abs(price - call_wall) / price
+                    dist_put = abs(price - put_wall) / price
+                    dist_val_flip = abs(price - flip) / price
+                    if min(dist_call, dist_put, dist_val_flip) <= 0.007:
+                        loc_points += 1.0
+                        
+                    dist_vah = abs(price - vp_5d['vah']) / price if vp_5d['vah'] > 0 else 999.0
+                    dist_val = abs(price - vp_5d['val']) / price if vp_5d['val'] > 0 else 999.0
+                    dist_poc = abs(price - vp_5d['poc']) / price if vp_5d['poc'] > 0 else 999.0
+                    if min(dist_vah, dist_val, dist_poc) <= 0.007:
+                        loc_points += 1.0
+
+                    # 5. Tactical Trigger (Tape) (Max 1.0 pt)
+                    trig_points = 0.0
+                    active_fvgs = [f for f in fvgs if f['state'] == "active"]
+                    has_fvg = False
+                    has_breaker = False
+                    if bias_direction == "long":
+                        has_fvg = any(f['type'] == "bullish" for f in active_fvgs)
+                        has_breaker = (breakers.get('bullish_breaker') is not None)
+                    else:
+                        has_fvg = any(f['type'] == "bearish" for f in active_fvgs)
+                        has_breaker = (breakers.get('bearish_breaker') is not None)
+                    if has_fvg or has_breaker or len(setups_triggered) > 0:
+                        trig_points += 1.0
+
+                    # 6. Risk/Reward Ratio (Skew) (Max 1.0 pt)
+                    rr_points = 0.0
+                    stop_dist = min(dist_put, dist_val_flip) if bias_direction == "long" else min(dist_call, dist_val_flip)
+                    target_dist = dist_call if bias_direction == "long" else dist_put
+                    if stop_dist > 0 and (target_dist / stop_dist) >= 2.5:
+                        rr_points += 1.0
+                        
+                    confluence_score = float(cat_points + align_points + rs_points + loc_points + trig_points + rr_points)
+                    
+                    if confluence_score >= 8.5:
+                        asset_grade = "A"
+                        sizing_recommendation = "Grade A Setup: Full Size (100% Risk)"
+                    elif confluence_score >= 6.5:
+                        asset_grade = "B"
+                        sizing_recommendation = "Grade B Setup: Muted Size (50% Risk)"
+                    elif confluence_score >= 4.5:
+                        asset_grade = "C"
+                        sizing_recommendation = "Grade C Setup: Trial Size (20% Risk)"
+                    else:
+                        asset_grade = "D"
+                        sizing_recommendation = "Grade D Setup: Stay Out (0% Risk)"
 
                 # GEX alerts
                 if abs(price - call_wall) / price <= 0.005:
@@ -165,7 +327,27 @@ class MarketScreener:
                     'total_vex_dollar': float(aggregated['total_vex_dollar']),
                     'total_cex_dollar': float(aggregated['total_cex_dollar']),
                     'setups': setups_triggered,
-                    'alerts': alerts[:5]
+                    'alerts': alerts[:5],
+                    'volume_profile_poc': float(vp_5d['poc']),
+                    'volume_profile_vah': float(vp_5d['vah']),
+                    'volume_profile_val': float(vp_5d['val']),
+                    'volume_profile_poc_25d': float(vp_25d['poc']),
+                    'volume_profile_vah_25d': float(vp_25d['vah']),
+                    'volume_profile_val_25d': float(vp_25d['val']),
+                    'volume_profile_poc_60d': float(vp_60d['poc']),
+                    'volume_profile_vah_60d': float(vp_60d['vah']),
+                    'volume_profile_val_60d': float(vp_60d['val']),
+                    'asset_grade': asset_grade,
+                    'asset_confluence_score': float(confluence_score),
+                    'asset_sizing_recommendation': sizing_recommendation,
+                    'scorecard_breakdown': {
+                        'catalyst': float(cat_points),
+                        'alignment': float(align_points),
+                        'rs_rw': float(rs_points),
+                        'location': float(loc_points),
+                        'trigger': float(trig_points),
+                        'risk_reward': float(rr_points)
+                    }
                 }
                 results.append(summary)
             except Exception as e:

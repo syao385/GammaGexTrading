@@ -119,6 +119,43 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
         strikes_list = strikes_filtered.to_dict(orient="records")
         expirations_list = [str(exp) for exp in raw_data['expirations']]
 
+        # Execute MarketScreener to fetch Volume Profile levels and Playbook ASSET grade/score
+        volume_profile_poc = 0.0
+        volume_profile_vah = 0.0
+        volume_profile_val = 0.0
+        volume_profile_poc_25d = 0.0
+        volume_profile_vah_25d = 0.0
+        volume_profile_val_25d = 0.0
+        volume_profile_poc_60d = 0.0
+        volume_profile_vah_60d = 0.0
+        volume_profile_val_60d = 0.0
+        asset_grade = "D"
+        asset_confluence_score = 0.0
+        asset_sizing_recommendation = "Grade D Setup: Stay Out (0% Risk)"
+        setups = []
+        scorecard_breakdown = {}
+        
+        try:
+            screener_results = screener.screen_symbols([symbol])
+            if screener_results and "error" not in screener_results[0]:
+                scr = screener_results[0]
+                volume_profile_poc = scr.get("volume_profile_poc", 0.0)
+                volume_profile_vah = scr.get("volume_profile_vah", 0.0)
+                volume_profile_val = scr.get("volume_profile_val", 0.0)
+                volume_profile_poc_25d = scr.get("volume_profile_poc_25d", 0.0)
+                volume_profile_vah_25d = scr.get("volume_profile_vah_25d", 0.0)
+                volume_profile_val_25d = scr.get("volume_profile_val_25d", 0.0)
+                volume_profile_poc_60d = scr.get("volume_profile_poc_60d", 0.0)
+                volume_profile_vah_60d = scr.get("volume_profile_vah_60d", 0.0)
+                volume_profile_val_60d = scr.get("volume_profile_val_60d", 0.0)
+                asset_grade = scr.get("asset_grade", "D")
+                asset_confluence_score = scr.get("asset_confluence_score", 0.0)
+                asset_sizing_recommendation = scr.get("asset_sizing_recommendation", "Grade D Setup: Stay Out (0% Risk)")
+                setups = scr.get("setups", [])
+                scorecard_breakdown = scr.get("scorecard_breakdown", {})
+        except Exception as scr_err:
+            logger.warning(f"API: screener integration failed in get_gex_profile: {scr_err}")
+
         return {
             'symbol': aggregated['symbol'],
             'current_price': aggregated['current_price'],
@@ -133,7 +170,23 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
             'iv_skew': aggregated['iv_skew'],
             'expirations': expirations_list,
             'strikes': strikes_list,
-            'sensitivity': sensitivity
+            'sensitivity': sensitivity,
+            # Volume Profile
+            'volume_profile_poc': volume_profile_poc,
+            'volume_profile_vah': volume_profile_vah,
+            'volume_profile_val': volume_profile_val,
+            'volume_profile_poc_25d': volume_profile_poc_25d,
+            'volume_profile_vah_25d': volume_profile_vah_25d,
+            'volume_profile_val_25d': volume_profile_val_25d,
+            'volume_profile_poc_60d': volume_profile_poc_60d,
+            'volume_profile_vah_60d': volume_profile_vah_60d,
+            'volume_profile_val_60d': volume_profile_val_60d,
+            # ASSET Scorecard
+            'asset_grade': asset_grade,
+            'asset_confluence_score': asset_confluence_score,
+            'asset_sizing_recommendation': asset_sizing_recommendation,
+            'scorecard_breakdown': scorecard_breakdown,
+            'setups': setups
         }
     except Exception as e:
         logger.error(f"API failed to fetch GEX profile for {symbol}: {e}")

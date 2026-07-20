@@ -118,6 +118,14 @@
                         <h2 id="regime-val">Positive Gamma</h2>
                     </div>
                 </div>
+                <div class="stat-card vp-card">
+                    <div class="stat-icon"><i class="fa-solid fa-cubes"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">5D Volume POC</span>
+                        <h2 id="vp-poc-val">$0.00</h2>
+                        <span id="vp-range-val" class="stat-sub">VA: $0.00 - $0.00</span>
+                    </div>
+                </div>
             </section>
 
             <!-- TAB 1: Live GEX Profile -->
@@ -157,6 +165,66 @@
                         </div>
                     </div>
                 </div>
+                <!-- ASSET Playbook Scorecard -->
+                <div id="asset-scorecard-card" class="card full-width-card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-ranking-star"></i> ASSET Playbook Scorecard & Sizing</h3>
+                        <span class="card-subtitle">10-Point Quantitative Playbook Setup Sizing & Confluence Grading</span>
+                    </div>
+                    <div class="card-body asset-scorecard-layout">
+                        <!-- Left: Circular Grade Indicator -->
+                        <div class="asset-grade-panel">
+                            <div class="asset-grade-circle" id="asset-grade-badge">D</div>
+                            <div class="asset-score-label">Score: <strong id="asset-score-num">0.0</strong> / 10.0</div>
+                            <div class="asset-sizing-badge" id="asset-sizing-badge">SKIP (0%)</div>
+                        </div>
+                        
+                        <!-- Middle: Confluence Progress Bars -->
+                        <div class="asset-categories-panel">
+                            <div class="category-row">
+                                <span class="category-label">1. Catalyst & RVOL</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-cat" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-cat">0.0/2.0</span>
+                            </div>
+                            <div class="category-row">
+                                <span class="category-label">2. Index & HTF Alignment</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-align" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-align">0.0/2.0</span>
+                            </div>
+                            <div class="category-row">
+                                <span class="category-label">3. Relative Strength (RS/RW)</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-rs" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-rs">0.0/2.0</span>
+                            </div>
+                            <div class="category-row">
+                                <span class="category-label">4. Location / Zone</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-loc" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-loc">0.0/2.0</span>
+                            </div>
+                            <div class="category-row">
+                                <span class="category-label">5. Tactical Trigger</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-trig" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-trig">0.0/1.0</span>
+                            </div>
+                            <div class="category-row">
+                                <span class="category-label">6. Risk/Reward Skew</span>
+                                <div class="category-bar"><div class="category-fill" id="fill-rr" style="width: 0%;"></div></div>
+                                <span class="category-points" id="pts-rr">0.0/1.0</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Actionable Recommendations -->
+                        <div class="asset-recommendation-panel">
+                            <h4 id="asset-rec-header">Inactive Setup</h4>
+                            <p id="asset-rec-desc">Select a symbol and click Analyze to evaluate setups against GEX and Volume boundaries.</p>
+                            <div class="asset-targets">
+                                <div class="target-item">Stop-loss Invalidation: <strong id="asset-stop-level">--</strong></div>
+                                <div class="target-item">Take-profit Target: <strong id="asset-target-level">--</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Active GEX Strategy Playbook -->
                 <div id="strategy-playbook-card" class="card full-width-card" style="margin-bottom: 24px;">
                     <div class="card-header">
@@ -474,6 +542,7 @@
                                     <th>Call Wall</th>
                                     <th>Put Wall</th>
                                     <th>Regime</th>
+                                    <th>ASSET Grade</th>
                                     <th>Triggered Technical Setups</th>
                                 </tr>
                             </thead>

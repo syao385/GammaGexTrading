@@ -290,9 +290,12 @@ async function fetchGexData(symbol, expiration) {
         updateStrikesTable(data.strikes);
         
         // Draw charts
-        drawGexStrikeChart(data.strikes, data.current_price, data.gamma_flip, data.call_wall, data.put_wall);
+        drawGexStrikeChart(data.strikes, data.current_price, data.gamma_flip, data.call_wall, data.put_wall, data.volume_profile_poc, data.volume_profile_vah, data.volume_profile_val);
         drawVexChart(data.strikes);
         drawCexChart(data.strikes);
+        
+        // Update ASSET Playbook Scorecard
+        updateAssetScorecard(data);
         
         // Draw Sensitivity Bounds
         updateSensitivityDisplay(data.sensitivity, data.current_price);
@@ -352,6 +355,17 @@ function updateStatsBanner(data) {
     document.getElementById('call-wall-val').textContent = formatCurrency(data.call_wall);
     document.getElementById('put-wall-val').textContent = formatCurrency(data.put_wall);
     
+    // Update Volume Profile Stat Card
+    const vpPocVal = document.getElementById('vp-poc-val');
+    const vpRangeVal = document.getElementById('vp-range-val');
+    if (vpPocVal && data.volume_profile_poc) {
+        vpPocVal.textContent = formatCurrency(data.volume_profile_poc);
+        vpRangeVal.textContent = `VA: ${formatCurrency(data.volume_profile_val)} - ${formatCurrency(data.volume_profile_vah)}`;
+    } else if (vpPocVal) {
+        vpPocVal.textContent = '$0.00';
+        vpRangeVal.textContent = 'VA: $0.00 - $0.00';
+    }
+    
     // Distance to flip
     const dist = data.distance_to_flip_pct !== undefined ? data.distance_to_flip_pct : ((data.current_price - data.gamma_flip) / data.current_price) * 100;
     const distEl = document.getElementById('flip-dist-val');
@@ -374,6 +388,82 @@ function updateStatsBanner(data) {
         regimeEl.textContent = 'Negative Gamma';
         regimeEl.className = 'text-orange';
         regimeCard.className = 'stat-card regime-card negative-regime';
+    }
+}
+
+function updateAssetScorecard(data) {
+    const gradeBadge = document.getElementById('asset-grade-badge');
+    const scoreNum = document.getElementById('asset-score-num');
+    const sizingBadge = document.getElementById('asset-sizing-badge');
+    const recHeader = document.getElementById('asset-rec-header');
+    const recDesc = document.getElementById('asset-rec-desc');
+    const stopLevel = document.getElementById('asset-stop-level');
+    const targetLevel = document.getElementById('asset-target-level');
+    
+    if (!gradeBadge) return;
+    
+    if (!data.asset_grade) {
+        gradeBadge.textContent = 'D';
+        gradeBadge.className = 'asset-grade-badge grade-d';
+        scoreNum.textContent = '0.0';
+        sizingBadge.textContent = 'SKIP (0%)';
+        sizingBadge.className = 'asset-sizing-badge sizing-skip';
+        recHeader.textContent = 'Inactive Setup';
+        recDesc.textContent = 'No active trade configurations found.';
+        stopLevel.textContent = '--';
+        targetLevel.textContent = '--';
+        return;
+    }
+    
+    // Update basic fields
+    gradeBadge.textContent = data.asset_grade;
+    gradeBadge.className = `asset-grade-circle grade-${data.asset_grade.toLowerCase()}`;
+    scoreNum.textContent = data.asset_confluence_score.toFixed(1);
+    sizingBadge.textContent = data.asset_sizing_recommendation.split(': ')[1] || data.asset_sizing_recommendation;
+    sizingBadge.className = `asset-sizing-badge sizing-${data.asset_grade.toLowerCase()}`;
+    
+    // Update progress bars
+    const bd = data.scorecard_breakdown || {};
+    
+    const setBar = (fillId, ptsId, val, maxVal) => {
+        const fillEl = document.getElementById(fillId);
+        const ptsEl = document.getElementById(ptsId);
+        if (fillEl && ptsEl) {
+            const pct = (val / maxVal) * 100;
+            fillEl.style.width = `${pct}%`;
+            ptsEl.textContent = `${val.toFixed(1)}/${maxVal.toFixed(1)}`;
+        }
+    };
+    
+    setBar('fill-cat', 'pts-cat', bd.catalyst || 0.0, 2.0);
+    setBar('fill-align', 'pts-align', bd.alignment || 0.0, 2.0);
+    setBar('fill-rs', 'pts-rs', bd.rs_rw || 0.0, 2.0);
+    setBar('fill-loc', 'pts-loc', bd.location || 0.0, 2.0);
+    setBar('fill-trig', 'pts-trig', bd.trigger || 0.0, 1.0);
+    setBar('fill-rr', 'pts-rr', bd.risk_reward || 0.0, 1.0);
+    
+    // Recommendations
+    const setupsList = data.setups || [];
+    if (data.asset_grade === 'D') {
+        recHeader.textContent = 'No Edge / Stay Out';
+        recDesc.textContent = 'The setup does not satisfy sufficient confluences to warrant capital risk. Wait for structural alignment near GEX walls or Value Area boundaries.';
+        stopLevel.textContent = '--';
+        targetLevel.textContent = '--';
+    } else {
+        const direction = data.current_price >= data.gamma_flip ? 'Bullish Long' : 'Bearish Short';
+        recHeader.textContent = `Grade ${data.asset_grade} - ${direction} Entry`;
+        
+        let triggerMsg = setupsList.join(', ') || 'Technical Proximity';
+        recDesc.textContent = `Triggered by ${triggerMsg}. High probability risk structure with solid R:R. Size according to ASSET protocol rules.`;
+        
+        // Populate stops and targets based on walls and flip
+        if (data.current_price >= data.gamma_flip) {
+            stopLevel.textContent = formatCurrency(Math.max(data.put_wall, data.gamma_flip, data.volume_profile_val));
+            targetLevel.textContent = formatCurrency(data.call_wall);
+        } else {
+            stopLevel.textContent = formatCurrency(Math.min(data.call_wall, data.gamma_flip, data.volume_profile_vah));
+            targetLevel.textContent = formatCurrency(data.put_wall);
+        }
     }
 }
 
@@ -412,7 +502,7 @@ function updateStrikesTable(strikes) {
 }
 
 // --- Chart drawing ---
-function drawGexStrikeChart(strikes, spot, flip, callWall, putWall) {
+function drawGexStrikeChart(strikes, spot, flip, callWall, putWall, vpPoc, vpVah, vpVal) {
     if (gexStrikeChart) {
         gexStrikeChart.destroy();
     }
@@ -429,6 +519,57 @@ function drawGexStrikeChart(strikes, spot, flip, callWall, putWall) {
     const backgroundColors = gexData.map(val => val >= 0 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(244, 63, 94, 0.6)');
     const borderColors = gexData.map(val => val >= 0 ? '#10b981' : '#f43f5e');
 
+    // Custom plugin to draw vertical levels for Volume Profile (POC, VAH, VAL)
+    const levelsPlugin = {
+        id: 'levelsPlugin',
+        afterDraw: (chart) => {
+            const ctx = chart.ctx;
+            const xAxis = chart.scales.x;
+            const yAxis = chart.scales.y;
+            
+            const drawVerticalLine = (price, color, label, offsetMultiplier) => {
+                if (!chart.data.labels || chart.data.labels.length === 0) return;
+                
+                // Find nearest strike tick index
+                let closestIdx = 0;
+                let minDiff = 999999;
+                for (let i = 0; i < chart.data.labels.length; i++) {
+                    const diff = Math.abs(chart.data.labels[i] - price);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestIdx = i;
+                    }
+                }
+                
+                const xPixel = xAxis.getPixelForTick(closestIdx);
+                if (xPixel >= xAxis.left && xPixel <= xAxis.right) {
+                    ctx.save();
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(xPixel, yAxis.top);
+                    ctx.lineTo(xPixel, yAxis.bottom);
+                    ctx.stroke();
+                    
+                    // Draw label badge
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 9px Plus Jakarta Sans';
+                    ctx.fillText(`${label}: $${price.toFixed(1)}`, xPixel + 5, yAxis.top + 15 + (offsetMultiplier * 12));
+                    ctx.restore();
+                }
+            };
+
+            if (chart.options.plugins.levels) {
+                const { poc, vah, val } = chart.options.plugins.levels;
+                if (poc > 0) drawVerticalLine(poc, '#3b82f6', 'POC', 0);
+                if (vah > 0) drawVerticalLine(vah, '#f43f5e', 'VAH', 1);
+                if (val > 0) drawVerticalLine(val, '#10b981', 'VAL', 2);
+            }
+        }
+    };
+
     gexStrikeChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -442,6 +583,7 @@ function drawGexStrikeChart(strikes, spot, flip, callWall, putWall) {
                 borderRadius: 4
             }]
         },
+        plugins: [levelsPlugin],
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -451,6 +593,11 @@ function drawGexStrikeChart(strikes, spot, flip, callWall, putWall) {
                     callbacks: {
                         label: (context) => `GEX: $${context.raw.toFixed(2)}M`
                     }
+                },
+                levels: {
+                    poc: vpPoc,
+                    vah: vpVah,
+                    val: vpVal
                 }
             },
             scales: {
@@ -3854,7 +4001,7 @@ async function loadLiquidScannerData() {
         const tbody = document.querySelector('#liquid-screener-table tbody');
         if (tbody) {
             if (result.data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No liquid symbols match the selected setup filter. Run "Rebuild DB" to populate.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">No liquid symbols match the selected setup filter. Run "Rebuild DB" to populate.</td></tr>`;
             } else {
                 tbody.innerHTML = result.data.map(row => `
                     <tr>
@@ -3867,6 +4014,11 @@ async function loadLiquidScannerData() {
                         <td>
                             <span class="status-badge ${row.net_gex_status === 'Positive' ? 'status-green' : 'status-red'}">
                                 ${row.net_gex_status === 'Positive' ? 'Positive Gamma' : 'Negative Gamma'}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="grade-badge grade-${(row.asset_grade || 'D').toLowerCase()}">
+                                ${row.asset_grade || 'D'}
                             </span>
                         </td>
                         <td>${getSetupBadgesHTML(row.alerts)}</td>

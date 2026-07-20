@@ -27,7 +27,7 @@ def get_risk_free_rate() -> float:
 
 class DataFetcher:
     def __init__(self):
-        pass
+        self._cache = {}
 
     def fetch_underlying_data(self, symbol: str):
         """
@@ -84,6 +84,17 @@ class DataFetcher:
         Restricts to the next `max_expirations` dates to prevent rate limiting and ensure speedy calculations.
         Returns a dictionary containing underlying details and option dataframes.
         """
+        symbol = symbol.upper().strip()
+        cache_key = (symbol, max_expirations)
+        now = datetime.now()
+        
+        # Check cache
+        if cache_key in self._cache:
+            cached_data, timestamp = self._cache[cache_key]
+            if now - timestamp < timedelta(seconds=30):
+                logger.info(f"Returning cached options chain for {symbol} (age: {(now - timestamp).seconds}s)")
+                return cached_data
+
         ticker = yf.Ticker(symbol)
         
         current_price, div_yield = self.fetch_underlying_data(symbol)
@@ -127,8 +138,8 @@ class DataFetcher:
             df['openInterest'] = df['openInterest'].fillna(0).astype(float)
             df['impliedVolatility'] = df['impliedVolatility'].fillna(0).astype(float)
             
-        return {
-            'symbol': symbol.upper(),
+        result = {
+            'symbol': symbol,
             'current_price': current_price,
             'dividend_yield': div_yield,
             'risk_free_rate': get_risk_free_rate(),
@@ -136,6 +147,10 @@ class DataFetcher:
             'puts': df_puts,
             'expirations': selected_expirations
         }
+        
+        # Store in cache
+        self._cache[cache_key] = (result, now)
+        return result
 
     # --- SWING TRADING MACRO INDICATORS ---
     

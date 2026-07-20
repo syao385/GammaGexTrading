@@ -40,7 +40,7 @@ def init_db():
     )
     """)
     
-    # Create technical_setups table
+    # Create technical_setups table with new columns
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS technical_setups (
         symbol TEXT PRIMARY KEY,
@@ -49,20 +49,49 @@ def init_db():
         ema_20_dist REAL,
         ema_50_dist REAL,
         alerts_json TEXT,
+        volume_profile_poc REAL,
+        volume_profile_vah REAL,
+        volume_profile_val REAL,
+        volume_profile_poc_25d REAL,
+        volume_profile_vah_25d REAL,
+        volume_profile_val_25d REAL,
+        volume_profile_poc_60d REAL,
+        volume_profile_vah_60d REAL,
+        volume_profile_val_60d REAL,
+        asset_grade TEXT,
+        asset_confluence_score REAL,
+        asset_sizing_recommendation TEXT,
         FOREIGN KEY(symbol) REFERENCES symbols(symbol) ON DELETE CASCADE
     )
     """)
     
+    # Run migrations to alter table if columns are missing in an existing database
+    new_cols = [
+        ("volume_profile_poc", "REAL"),
+        ("volume_profile_vah", "REAL"),
+        ("volume_profile_val", "REAL"),
+        ("volume_profile_poc_25d", "REAL"),
+        ("volume_profile_vah_25d", "REAL"),
+        ("volume_profile_val_25d", "REAL"),
+        ("volume_profile_poc_60d", "REAL"),
+        ("volume_profile_vah_60d", "REAL"),
+        ("volume_profile_val_60d", "REAL"),
+        ("asset_grade", "TEXT"),
+        ("asset_confluence_score", "REAL"),
+        ("asset_sizing_recommendation", "TEXT")
+    ]
+    for col_name, col_type in new_cols:
+        try:
+            cursor.execute(f"ALTER TABLE technical_setups ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+            
     conn.commit()
     conn.close()
 
 def save_symbol_metrics(symbol: str, metrics: dict):
     """
-    Saves or updates calculated GEX and technical metrics for a symbol in the database.
-    metrics should contain keys:
-      - price, avg_volume, optionable, last_updated
-      - call_wall, put_wall, gamma_flip, net_gex_status
-      - vcp_status, trend_direction, ema_20_dist, ema_50_dist, alerts_json
+    Saves or updates calculated GEX, Volume Profile, Smart Money setups, and ASSET scorecard metrics in the database.
     """
     symbol = symbol.upper().strip()
     conn = get_db_connection()
@@ -94,15 +123,33 @@ def save_symbol_metrics(symbol: str, metrics: dict):
         
         # Insert or replace in technical_setups
         cursor.execute("""
-        INSERT OR REPLACE INTO technical_setups (symbol, vcp_status, trend_direction, ema_20_dist, ema_50_dist, alerts_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO technical_setups (
+            symbol, vcp_status, trend_direction, ema_20_dist, ema_50_dist, alerts_json,
+            volume_profile_poc, volume_profile_vah, volume_profile_val,
+            volume_profile_poc_25d, volume_profile_vah_25d, volume_profile_val_25d,
+            volume_profile_poc_60d, volume_profile_vah_60d, volume_profile_val_60d,
+            asset_grade, asset_confluence_score, asset_sizing_recommendation
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             symbol,
             metrics.get('vcp_status'),
             metrics.get('trend_direction'),
             metrics.get('ema_20_dist'),
             metrics.get('ema_50_dist'),
-            json.dumps(metrics.get('alerts', []))
+            json.dumps(metrics.get('alerts', [])),
+            metrics.get('volume_profile_poc'),
+            metrics.get('volume_profile_vah'),
+            metrics.get('volume_profile_val'),
+            metrics.get('volume_profile_poc_25d'),
+            metrics.get('volume_profile_vah_25d'),
+            metrics.get('volume_profile_val_25d'),
+            metrics.get('volume_profile_poc_60d'),
+            metrics.get('volume_profile_vah_60d'),
+            metrics.get('volume_profile_val_60d'),
+            metrics.get('asset_grade'),
+            metrics.get('asset_confluence_score'),
+            metrics.get('asset_sizing_recommendation')
         ))
         
         conn.commit()
@@ -115,11 +162,7 @@ def save_symbol_metrics(symbol: str, metrics: dict):
 
 def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, limit: int = 50, offset: int = 0):
     """
-    Queries the database for liquid universe tickers.
-    Filters:
-      - min_price (defaults to 10.0)
-      - setup_filter (e.g. 'vcp', 'breakout', 'trend_continuation', 'mean_reversion', 'unusual_volume')
-    Returns list of dictionaries containing consolidated symbol metrics.
+    Queries the database for liquid universe tickers with GEX and expanded technical setup metrics.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -127,7 +170,11 @@ def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, lim
     query = """
     SELECT s.symbol, s.price, s.avg_volume, s.optionable, s.last_updated,
            g.call_wall, g.put_wall, g.gamma_flip, g.net_gex_status,
-           t.vcp_status, t.trend_direction, t.ema_20_dist, t.ema_50_dist, t.alerts_json
+           t.vcp_status, t.trend_direction, t.ema_20_dist, t.ema_50_dist, t.alerts_json,
+           t.volume_profile_poc, t.volume_profile_vah, t.volume_profile_val,
+           t.volume_profile_poc_25d, t.volume_profile_vah_25d, t.volume_profile_val_25d,
+           t.volume_profile_poc_60d, t.volume_profile_vah_60d, t.volume_profile_val_60d,
+           t.asset_grade, t.asset_confluence_score, t.asset_sizing_recommendation
     FROM symbols s
     LEFT JOIN gex_data g ON s.symbol = g.symbol
     LEFT JOIN technical_setups t ON s.symbol = t.symbol
@@ -164,6 +211,10 @@ def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, lim
                     elif setup_filter == 'mean_reversion' and ('mean' in alert.lower() or 'reversion' in alert.lower() or 'wall proximity' in alert.lower()):
                         matches_filter = True
                     elif setup_filter == 'unusual_volume' and ('volume' in alert.lower() or 'vol' in alert.lower() or 'sweep' in alert.lower()):
+                        matches_filter = True
+                    elif setup_filter == 'breaker' and 'breaker' in alert.lower():
+                        matches_filter = True
+                    elif setup_filter == 'fvg' and 'fvg' in alert.lower():
                         matches_filter = True
                     
                 if not matches_filter:

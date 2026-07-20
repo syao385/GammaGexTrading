@@ -177,107 +177,21 @@ async def run_universe_scan():
                         scanner_status["progress"] = index + 1
                         continue
                         
-                    # 2. Fetch Option Chain (max 4 expirations for screening speed)
-                    try:
-                        raw_chain = fetcher.fetch_options_chain(symbol, max_expirations=4)
-                    except Exception as chain_err:
-                        logger.warning(f"Skipping {symbol}: Option chain fetch failed: {chain_err}")
+                    # Run the full MarketScreener to get GEX, Volume Profile, and ASSET scorecard
+                    results = screener.screen_symbols([symbol])
+                    if not results or "error" in results[0]:
+                        logger.warning(f"Skipping {symbol}: Screener failed to process: {results[0].get('error') if results else 'unknown'}")
                         scanner_status["progress"] = index + 1
                         continue
                         
-                    # 3. Process options data & GEX walls
-                    processed = engine.process_options_chain(raw_chain)
-                    aggregated = engine.compute_aggregated_exposures(processed)
+                    metrics = results[0]
+                    # Inject additional fields needed by database save
+                    metrics['avg_volume'] = avg_volume
+                    metrics['optionable'] = True
+                    metrics['last_updated'] = time.time()
                     
-                    call_wall = float(aggregated['call_wall'])
-                    put_wall = float(aggregated['put_wall'])
-                    gamma_flip = float(aggregated['gamma_flip'])
-                    net_gex_status = "Positive" if price >= gamma_flip else "Negative"
-                    
-                    # 4. Compute moving averages
-                    closes = hist['Close'].values
-                    ema_20 = float(hist['Close'].ewm(span=20, adjust=False).mean().iloc[-1])
-                    ema_50 = float(hist['Close'].ewm(span=50, adjust=False).mean().iloc[-1])
-                    ema_20_dist = ((price - ema_20) / price) * 100
-                    ema_50_dist = ((price - ema_50) / price) * 100
-                    
-                    # 5. Determine Trend Direction
-                    ema_20_hist = hist['Close'].ewm(span=20, adjust=False).mean()
-                    ema_50_hist = hist['Close'].ewm(span=50, adjust=False).mean()
-                    if ema_20_hist.iloc[-1] > ema_20_hist.iloc[-5] and ema_50_hist.iloc[-1] > ema_50_hist.iloc[-5]:
-                        trend_direction = "Bullish"
-                    elif ema_20_hist.iloc[-1] < ema_20_hist.iloc[-5] and ema_50_hist.iloc[-1] < ema_50_hist.iloc[-5]:
-                        trend_direction = "Bearish"
-                    else:
-                        trend_direction = "Neutral"
-                        
-                    # 6. Run Screener Technical Setup Detectors
-                    alerts = []
-                    
-                    # A. Breakout Check
-                    # Close > 20-day high (excluding today) and volume > 1.5x average
-                    high_20 = float(hist['High'].iloc[-21:-1].max())
-                    current_volume = float(last_row['Volume'])
-                    vol_avg_20 = float(hist['Volume'].iloc[-21:-1].mean())
-                    if price > high_20 and current_volume >= 1.5 * vol_avg_20:
-                        alerts.append("Breakout: 20-Day Range Break")
-                    elif abs(price - call_wall) / price <= 0.005 and price > call_wall:
-                        alerts.append("Breakout: Call Wall Breach")
-                        
-                    # B. Unusual Volume (Vol > 2.0x average)
-                    if current_volume >= 2.0 * vol_avg_20:
-                        alerts.append(f"Unusual Vol: Volume {current_volume/vol_avg_20:.1f}x of 20-day MA")
-                        
-                    # Check options unusual sweeps
-                    option_vol_oi_max = 0.0
-                    for chain in [processed['calls'], processed['puts']]:
-                        if not chain.empty:
-                            ratio = chain['volume'] / (chain['openInterest'] + 1.0)
-                            max_ratio = ratio.max()
-                            if max_ratio > option_vol_oi_max:
-                                option_vol_oi_max = max_ratio
-                    if option_vol_oi_max > 1.5:
-                        alerts.append(f"Unusual Vol: Options UOA sweep ratio {option_vol_oi_max:.1f}x")
-                        
-                    # C. VCP Check
-                    vcp_detected, vcp_summary = detect_vcp_pattern_local(hist)
-                    if vcp_detected:
-                        alerts.append(f"VCP Pattern: {vcp_summary}")
-                        
-                    # D. Mean Reversion check
-                    # Within 0.5% of Call/Put Wall, and price far from 20-day EMA
-                    if abs(price - call_wall) / price <= 0.005:
-                        alerts.append(f"Mean Rev: At Call Wall ({call_wall:.2f})")
-                    elif abs(price - put_wall) / price <= 0.005:
-                        alerts.append(f"Mean Rev: At Put Wall ({put_wall:.2f})")
-                    elif abs(ema_20_dist) > 5.0:
-                        alerts.append(f"Mean Rev: Overextended {ema_20_dist:.1f}% from 20-day EMA")
-                        
-                    # E. Trend Continuation Check
-                    # Spot pulls back to test 20 EMA in strong trend with low volume
-                    if trend_direction == "Bullish" and abs(price - ema_20) / price <= 0.015:
-                        # Pullback check (price low tested near EMA, close holds above, volume low)
-                        if price >= ema_20 and current_volume < vol_avg_20:
-                            alerts.append("Trend Cont: Pullback to 20-day EMA")
-                            
-                    # 7. Save to Database
-                    metrics = {
-                        "price": price,
-                        "avg_volume": avg_volume,
-                        "optionable": True,
-                        "last_updated": time.time(),
-                        "call_wall": call_wall,
-                        "put_wall": put_wall,
-                        "gamma_flip": gamma_flip,
-                        "net_gex_status": net_gex_status,
-                        "vcp_status": vcp_summary if vcp_detected else "No contraction",
-                        "trend_direction": trend_direction,
-                        "ema_20_dist": ema_20_dist,
-                        "ema_50_dist": ema_50_dist,
-                        "alerts": alerts
-                    }
                     save_symbol_metrics(symbol, metrics)
-                    logger.info(f"Saved {symbol} metrics successfully. Alerts: {alerts}")
+                    logger.info(f"Saved {symbol} metrics successfully. Grade: {metrics.get('asset_grade')} (Score: {metrics.get('asset_confluence_score')})")
                     
                 except Exception as sym_err:
                     logger.error(f"Error scanning symbol {symbol}: {sym_err}")
