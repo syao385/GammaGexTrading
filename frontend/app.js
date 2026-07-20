@@ -342,7 +342,13 @@ async function fetchGexData(symbol, expiration) {
         if (ofState && ofState.initialized) {
             resetOrderFlowData();
             initializeBookmapHeatmap();
-            renderOrderFlowCharts();
+            
+            const mode = ofState.feedMode;
+            if (mode === 'schwab' || mode === 'alpaca') {
+                connectLiveWebSocket(mode);
+            } else {
+                renderOrderFlowCharts();
+            }
         }
         
     } catch (error) {
