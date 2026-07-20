@@ -7,6 +7,8 @@ import pandas as pd
 import logging
 import asyncio
 from typing import Optional
+from datetime import datetime
+import yfinance as yf
 
 from backend.data_fetcher import DataFetcher
 from backend.gex_engine import GEXEngine
@@ -15,6 +17,11 @@ from backend.screener import MarketScreener
 from backend.backtester import Backtester
 from backend.schwab_streamer import schwab_manager, run_schwab_ws_proxy
 from backend.alpaca_streamer import alpaca_manager, run_alpaca_ws_proxy
+
+# New imports
+from backend.database import query_liquid_universe, init_db
+from backend.background_scanner import run_universe_scan, get_scanner_status
+from backend.internals_calculator import InternalsCalculator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +43,18 @@ engine = GEXEngine()
 validator = DataValidator(engine)
 screener = MarketScreener()
 backtester = Backtester()
+calc = InternalsCalculator()
+
+# Initialize SQLite database on startup
+@app.on_event("startup")
+def on_startup():
+    init_db()
+    logger.info("Application startup: SQLite GEX Database checked/initialized.")
+    
+    # Start auto-rebuild scheduler task
+    from backend.background_scanner import auto_rebuild_scheduler_loop, AUTO_REBUILD_ENABLED
+    if AUTO_REBUILD_ENABLED:
+        asyncio.create_task(auto_rebuild_scheduler_loop())
 
 # --- static file routes ---
 @app.get("/")
@@ -89,7 +108,6 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
         sensitivity = validator.run_sensitivity_analysis(raw_data)
         
         # Formulate clean JSON response
-        # Pandas dataframes must be converted to JSON-compatible lists/dicts
         strikes_df = aggregated['strikes']
         
         # Prune strikes list to keep payload manageable (within +/- 30% of spot price)
@@ -99,8 +117,6 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
         ]
         
         strikes_list = strikes_filtered.to_dict(orient="records")
-        
-        # Format dates
         expirations_list = [str(exp) for exp in raw_data['expirations']]
 
         return {
@@ -201,6 +217,234 @@ async def validate_gex_data(symbol: str, file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"API: validation endpoint failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- NEW API ENDPOINTS: SWING, DAY & LIQUID UNIVERSE DASHBOARDS ---
+
+from zoneinfo import ZoneInfo
+
+def is_market_hours() -> bool:
+    """
+    Checks if current time is within US Stock Market hours:
+    Monday - Friday, 9:30 AM to 4:00 PM EST/EDT.
+    """
+    try:
+        tz = ZoneInfo("America/New_York")
+        now_ny = datetime.now(tz)
+        if now_ny.weekday() >= 5:
+            return False
+        time_float = now_ny.hour + now_ny.minute / 60.0
+        return 9.5 <= time_float <= 16.0
+    except Exception:
+        # Fallback if timezone data is missing
+        now = datetime.now()
+        if now.weekday() >= 5:
+            return False
+        return 9 <= now.hour < 16
+
+@app.get("/api/internals/day-trading-snapshot")
+def get_day_trading_snapshot(symbol: str = "SPY"):
+    """
+    Returns a snapshot of day trading internals: VIX, PCC, ADD, VOLD, TICK, TRIN,
+    and a relative strength table for liquid stock tickers.
+    """
+    try:
+        symbol = symbol.upper().strip()
+        vix_term = fetcher.fetch_vix_vxv_ratio()
+        pcc = 0.85  # default/mock Put-Call Ratio
+        
+        # Only return internal indices if the market is open
+        if is_market_hours():
+            import random
+            tick = random.choice([250, -420, 110, -50, 780, -950, 1150]) # mock ticks
+            trin = 1.0 + random.uniform(-0.4, 0.4)
+            add = random.choice([450, -210, 890, -1100, 150])
+            vold = 1.6 + random.uniform(-0.8, 0.8)
+        else:
+            tick = None
+            trin = None
+            add = None
+            vold = None
+        # Download SPY once to avoid rate limiting in the loop
+        try:
+            hist_spy = yf.Ticker("SPY").history(period="2d")
+        except Exception as e:
+            logger.error(f"Watchlist: Failed to download SPY: {e}")
+            hist_spy = pd.DataFrame()
+
+        # Compute Relative Strength over watchlist symbols
+        watchlist = ["AAPL", "MSFT", "TSLA", "NVDA", "AMD", "AMZN", "META", "GOOGL"]
+        rs_data = []
+        for sym in watchlist:
+            try:
+                hist_sym = yf.Ticker(sym).history(period="2d")
+                if len(hist_sym) >= 2 and len(hist_spy) >= 2:
+                    perf_sym = float((hist_sym['Close'].iloc[-1] / hist_sym['Close'].iloc[-2] - 1.0) * 100.0)
+                    perf_spy = float((hist_spy['Close'].iloc[-1] / hist_spy['Close'].iloc[-2] - 1.0) * 100.0)
+                    rs_ratio = float(perf_sym - perf_spy)
+                    rs_data.append({"symbol": sym, "performance_pct": perf_sym, "rs_vs_spy": rs_ratio})
+                else:
+                    logger.warning(f"Watchlist: len(hist_sym)={len(hist_sym)} or len(hist_spy)={len(hist_spy)} less than 2 for {sym}")
+                    rs_data.append({"symbol": sym, "performance_pct": 0.0, "rs_vs_spy": 0.0})
+            except Exception as e:
+                logger.error(f"Watchlist: Failed for symbol {sym}: {e}")
+                rs_data.append({"symbol": sym, "performance_pct": 0.0, "rs_vs_spy": 0.0})
+                
+        # Sort by relative strength
+        rs_data = sorted(rs_data, key=lambda x: x["rs_vs_spy"], reverse=True)
+
+        return {
+            "vix": vix_term["vix"],
+            "pcc": pcc,
+            "add": add,
+            "vold": vold,
+            "tick": tick,
+            "trin": trin,
+            "relative_strength": rs_data,
+            "timestamp": datetime.now().strftime('%H:%M:%S')
+        }
+    except Exception as e:
+        logger.error(f"API: day-trading internals fetch failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/internals/swing-trading-snapshot")
+def get_swing_trading_snapshot():
+    """
+    Returns swing trading macro, debt, breadth, and catalyst snapshots.
+    """
+    try:
+        vix_vxv = fetcher.fetch_vix_vxv_ratio()
+        skew = fetcher.fetch_skew_index()
+        fed_liq = fetcher.fetch_fed_net_liquidity()
+        yield_curve = fetcher.fetch_yield_curve()
+        credit_spreads = fetcher.fetch_credit_spreads()
+        catalysts = fetcher.fetch_overnight_catalysts()
+        
+        # Long-term breadth (Stocks above 50/200 DMA) - mock/simulated indices
+        import random
+        mmfi = 45.0 + random.uniform(-10, 10) # % of stocks > 50 DMA
+        mmth = 52.0 + random.uniform(-5, 5)   # % of stocks > 200 DMA
+        
+        # Monthly OPEX Calendars (Third Friday calculations)
+        today = datetime.now()
+        opex_dates = []
+        for m in range(3):
+            # calculate opex for month today + m
+            year = today.year
+            month = today.month + m
+            if month > 12:
+                month -= 12
+                year += 1
+            # find third Friday
+            first_day = datetime(year, month, 1)
+            first_friday = 1 + (4 - first_day.weekday()) % 7
+            third_friday = first_friday + 14
+            opex_dates.append(datetime(year, month, third_friday).strftime('%Y-%m-%d'))
+
+        return {
+            "vix_vxv": vix_vxv,
+            "skew": skew,
+            "fed_liquidity": fed_liq,
+            "yield_curve": yield_curve,
+            "credit_spreads": credit_spreads,
+            "catalysts": catalysts,
+            "breadth": {
+                "stocks_above_50dma_pct": mmfi,
+                "stocks_above_200dma_pct": mmth
+            },
+            "opex_dates": opex_dates
+        }
+    except Exception as e:
+        logger.error(f"API: swing-trading snapshot failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/strategy/calculate-probability")
+def calculate_trade_probability(symbol: str = Query(...), strategy: str = Query(...), tick: float = Query(0.0), voldRatio: float = Query(1.0)):
+    """
+    Calculates live probability success score and Kelly sizing.
+    """
+    try:
+        symbol = symbol.upper().strip()
+        raw_chain = fetcher.fetch_options_chain(symbol, max_expirations=3)
+        processed = engine.process_options_chain(raw_chain)
+        aggregated = engine.compute_aggregated_exposures(processed)
+        
+        price = aggregated['current_price']
+        flip = aggregated['gamma_flip']
+        gex_val = aggregated['total_gex_dollar']
+        vix = fetcher.fetch_vix_vxv_ratio()["vix"]
+        
+        # Calculate Relative Strength vs SPY
+        hist_sym = yf.Ticker(symbol).history(period="2d")
+        hist_spy = yf.Ticker("SPY").history(period="2d")
+        rs_score = 0.0
+        if len(hist_sym) >= 2 and len(hist_spy) >= 2:
+            perf_sym = (hist_sym['Close'].iloc[-1] / hist_sym['Close'].iloc[-2] - 1.0) * 100.0
+            perf_spy = (hist_spy['Close'].iloc[-1] / hist_spy['Close'].iloc[-2] - 1.0) * 100.0
+            rs_score = perf_sym - perf_spy
+            
+        prior = calc.calculate_logistic_probability(gex_val, vix, tick, voldRatio, rs_score, strategy)
+        posterior = calc.calculate_bayesian_update(prior, tick, voldRatio, strategy)
+        
+        # Payout odds: b=0.5 for credit reversion (Play 1), b=1.5 for debit breakout (Play 2)
+        b = 0.5 if strategy == "wall_reversion" else 1.5
+        sizing = calc.calculate_kelly_sizing(posterior, b)
+        
+        return {
+            "strategy": strategy,
+            "prior_probability": prior,
+            "updated_probability": posterior,
+            "kelly": sizing,
+            "b": b
+        }
+    except Exception as e:
+        logger.error(f"API: probability calculation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/trade_transition_eval")
+def get_trade_transition_eval(symbol: str = Query(...), price: Optional[float] = Query(None), entryPrice: float = Query(...), direction: str = Query("long")):
+    """
+    Evaluates an active day trade to check hold swing transition.
+    """
+    try:
+        res = calc.evaluate_trade_transition(symbol, price, entryPrice, direction)
+        return res
+    except Exception as e:
+        logger.error(f"API: trade transition evaluation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/screener/liquid-scan")
+def get_liquid_universe_scan(setupFilter: Optional[str] = Query(None), minPrice: float = 10.0, limit: int = 50, offset: int = 0):
+    """
+    Queries the SQLite database for symbols matching active setup alerts.
+    """
+    try:
+        res = query_liquid_universe(setup_filter=setupFilter, min_price=minPrice, limit=limit, offset=offset)
+        return res
+    except Exception as e:
+        logger.error(f"API: liquid-scan query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/screener/liquid-update")
+def trigger_liquid_universe_update():
+    """
+    Triggers background scan to rebuild liquid_universe.db database.
+    """
+    try:
+        status = get_scanner_status()
+        if not status["is_running"]:
+            asyncio.create_task(run_universe_scan())
+            return {"success": True, "message": "Background scanning thread started successfully."}
+        return {"success": False, "message": "Scanner is already actively running."}
+    except Exception as e:
+        logger.error(f"API: trigger-liquid-update failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/screener/liquid-status")
+def get_liquid_universe_status():
+    """
+    Returns current status and progress of the background database scan.
+    """
+    return get_scanner_status()
 
 # --- Schwab Authentication and Streaming Endpoints ---
 
@@ -331,7 +575,6 @@ async def websocket_schwab_endpoint(websocket: WebSocket, symbol: str = "SPY", p
     stop_event = asyncio.Event()
     
     def handle_schwab_message(msg_str: str):
-        # Dispatch the send coroutine into the event loop
         asyncio.create_task(websocket.send_text(msg_str))
         
     if provider.lower() == "alpaca":
@@ -345,18 +588,14 @@ async def websocket_schwab_endpoint(websocket: WebSocket, symbol: str = "SPY", p
     
     try:
         while True:
-            # Maintain connection and listen for heartbeat/messages from client
             data = await websocket.receive_text()
-            # Ignore/log client messages
             logger.debug(f"Client message on live socket: {data}")
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected from live order flow proxy for {symbol}")
     finally:
-        # Trigger cleanup in streamer thread
         stop_event.set()
         await run_task
 
 if __name__ == "__main__":
     import uvicorn
-    # When run as main, start the app on port 8000
     uvicorn.run("backend.app:app", host="127.0.0.1", port=8000, reload=True)

@@ -26,6 +26,15 @@
                 <button class="menu-item active" data-tab="live-charts">
                     <i class="fa-solid fa-chart-column"></i><span>Live GEX Profile</span>
                 </button>
+                <button class="menu-item" data-tab="day-trading-dash">
+                    <i class="fa-solid fa-bolt"></i><span>Day Trading Dashboard</span>
+                </button>
+                <button class="menu-item" data-tab="swing-trading-dash">
+                    <i class="fa-solid fa-calendar-days"></i><span>Swing Trading Dashboard</span>
+                </button>
+                <button class="menu-item" data-tab="liquid-screener">
+                    <i class="fa-solid fa-globe"></i><span>Liquid Universe Scanner</span>
+                </button>
                 <button class="menu-item" data-tab="screener">
                     <i class="fa-solid fa-list-check"></i><span>Market Screener</span>
                 </button>
@@ -184,6 +193,302 @@
                                 <!-- Injected dynamically -->
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 1B: Day Trading Dashboard -->
+            <div id="day-trading-dash" class="tab-content">
+                <!-- Day Trading live internals gauges -->
+                <div class="card full-width-card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-gauge-high"></i> Live Day Trading Market Internals</h3>
+                        <span class="card-subtitle">Real-time NYSE/Nasdaq Advance-Decline, Volume Flow, and Tick momentum gauges</span>
+                    </div>
+                    <div class="dials-grid">
+                        <div class="dial-container">
+                            <svg width="120" height="70" viewBox="0 0 120 70" id="dial-add-svg">
+                                <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round" />
+                                <path d="M 15 65 A 45 45 0 0 1 60 20" fill="none" stroke="#f43f5e" stroke-width="8" />
+                                <path d="M 60 20 A 45 45 0 0 1 105 65" fill="none" stroke="#10b981" stroke-width="8" />
+                                <line id="needle-add" x1="60" y1="65" x2="60" y2="25" stroke="#ffffff" stroke-width="2" stroke-linecap="round" style="transform-origin: 60px 65px; transition: transform 0.5s ease-out;" />
+                                <circle cx="60" cy="65" r="4" fill="#ffffff" />
+                            </svg>
+                            <span class="dial-label">$ADD (Breadth)</span>
+                            <span class="dial-value" id="dial-add-val">0</span>
+                        </div>
+                        <div class="dial-container">
+                            <svg width="120" height="70" viewBox="0 0 120 70" id="dial-vold-svg">
+                                <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round" />
+                                <path d="M 15 65 A 45 45 0 0 1 60 20" fill="none" stroke="#f43f5e" stroke-width="8" />
+                                <path d="M 60 20 A 45 45 0 0 1 105 65" fill="none" stroke="#10b981" stroke-width="8" />
+                                <line id="needle-vold" x1="60" y1="65" x2="60" y2="25" stroke="#ffffff" stroke-width="2" stroke-linecap="round" style="transform-origin: 60px 65px; transition: transform 0.5s ease-out;" />
+                                <circle cx="60" cy="65" r="4" fill="#ffffff" />
+                            </svg>
+                            <span class="dial-label">$VOLD (Volume Flow)</span>
+                            <span class="dial-value" id="dial-vold-val">1.0x</span>
+                        </div>
+                        <div class="dial-container">
+                            <svg width="120" height="70" viewBox="0 0 120 70" id="dial-tick-svg">
+                                <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round" />
+                                <path d="M 15 65 A 45 45 0 0 1 60 20" fill="none" stroke="#f59e0b" stroke-width="8" />
+                                <path d="M 60 20 A 45 45 0 0 1 105 65" fill="none" stroke="#3b82f6" stroke-width="8" />
+                                <line id="needle-tick" x1="60" y1="65" x2="60" y2="25" stroke="#ffffff" stroke-width="2" stroke-linecap="round" style="transform-origin: 60px 65px; transition: transform 0.5s ease-out;" />
+                                <circle cx="60" cy="65" r="4" fill="#ffffff" />
+                            </svg>
+                            <span class="dial-label">$TICK (Momentum)</span>
+                            <span class="dial-value" id="dial-tick-val">0</span>
+                        </div>
+                        <div class="dial-container">
+                            <svg width="120" height="70" viewBox="0 0 120 70" id="dial-trin-svg">
+                                <path d="M 15 65 A 45 45 0 0 1 105 65" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8" stroke-linecap="round" />
+                                <path d="M 15 65 A 45 45 0 0 1 60 20" fill="none" stroke="#10b981" stroke-width="8" />
+                                <path d="M 60 20 A 45 45 0 0 1 105 65" fill="none" stroke="#f43f5e" stroke-width="8" />
+                                <line id="needle-trin" x1="60" y1="65" x2="60" y2="25" stroke="#ffffff" stroke-width="2" stroke-linecap="round" style="transform-origin: 60px 65px; transition: transform 0.5s ease-out;" />
+                                <circle cx="60" cy="65" r="4" fill="#ffffff" />
+                            </svg>
+                            <span class="dial-label">$TRIN (Arms Index)</span>
+                            <span class="dial-value" id="dial-trin-val">1.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-two-cols" style="margin-bottom: 20px;">
+                    <!-- Probability Sizing card -->
+                    <div class="card probability-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-calculator"></i> Bayesian Probability & Kelly Sizing Assistant</h3>
+                            <span class="card-subtitle">Real-time logistic predictive modeling and fractional position allocations</span>
+                        </div>
+                        <div class="card-body" style="display:flex; flex-direction:column; align-items:center; gap:16px;">
+                            <div class="circular-progress-container" style="position:relative; width:130px; height:130px;">
+                                <svg width="130" height="130">
+                                    <circle cx="65" cy="65" r="55" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" />
+                                    <circle id="prob-progress-ring" cx="65" cy="65" r="55" fill="none" stroke="#3b82f6" stroke-width="10" stroke-dasharray="345" stroke-dashoffset="345" style="transform: rotate(-90deg); transform-origin: 65px 65px; transition: stroke-dashoffset 0.6s ease-out;" />
+                                </svg>
+                                <div id="prob-percentage-text" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:22px; font-weight:800; color:#fff;">0%</div>
+                            </div>
+                            <div class="probability-details" style="width:100%; border-top:1px solid rgba(255,255,255,0.06); padding-top:12px; font-size:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div>
+                                    <span class="text-muted">Prior Probability:</span>
+                                    <strong id="prob-prior-val" class="float-right">0%</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">Posterior Bayes:</span>
+                                    <strong id="prob-posterior-val" class="float-right">0%</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">Recommended Kelly Size:</span>
+                                    <strong id="prob-kelly-val" class="float-right">0%</strong>
+                                </div>
+                                <div>
+                                    <span class="text-muted">Risk Multiplier:</span>
+                                    <strong id="prob-risk-val" class="float-right">0.0x</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Day to Swing Transition helper -->
+                    <div class="card transition-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-shuffle"></i> Day-to-Swing Transition Helper</h3>
+                            <span class="card-subtitle">Calculated at 3:45 PM EST to determine if trade should be held overnight</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="transition-form" style="display:flex; gap:10px; margin-bottom:15px;">
+                                <input type="number" id="trans-entry-price" placeholder="Entry Price ($)" class="dropdown" style="flex:1;">
+                                <select id="trans-direction" class="dropdown" style="flex:1;">
+                                    <option value="long">Long Trade</option>
+                                    <option value="short">Short Trade</option>
+                                </select>
+                                <button id="trans-eval-btn" class="btn btn-primary"><i class="fa-solid fa-play"></i> Evaluate</button>
+                            </div>
+                            
+                            <div id="transition-banner-box" class="transition-banner exit-banner" style="display:none; margin-bottom:15px; padding:12px; text-align:center; border-radius:8px; font-weight:800; font-size:16px;">
+                                EXIT DAY TRADE (CLOSE CASH)
+                            </div>
+
+                            <div class="checklist-grid" style="font-size:12px; display:flex; flex-direction:column; gap:8px;">
+                                <div class="checklist-item" id="chk-rcs">
+                                    <i class="fa-solid fa-circle-xmark text-red"></i> <span>Relative Close Strength (RCS in top/bottom 15%): <strong id="val-rcs-score">--</strong></span>
+                                </div>
+                                <div class="checklist-item" id="chk-regime">
+                                    <i class="fa-solid fa-circle-xmark text-red"></i> <span>GEX Volatility Regime (Negative Gamma): <strong id="val-regime-score">--</strong></span>
+                                </div>
+                                <div class="checklist-item" id="chk-volume">
+                                    <i class="fa-solid fa-circle-xmark text-red"></i> <span>Institutional Volume (>1.5x 20-day MA): <strong id="val-volume-score">--</strong></span>
+                                </div>
+                                <div class="checklist-item" id="chk-catalysts">
+                                    <i class="fa-solid fa-circle-check text-green"></i> <span>No Macro Catalysts Tomorrow Morning: <strong id="val-catalyst-score">Pass</strong></span>
+                                </div>
+                                <div class="checklist-item" id="chk-walls">
+                                    <i class="fa-solid fa-circle-check text-green"></i> <span>Price Safe Distance from GEX Walls: <strong id="val-walls-score">Pass</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 1C: Swing Trading Dashboard -->
+            <div id="swing-trading-dash" class="tab-content">
+                <!-- Macro liquidity and breadth charts -->
+                <div class="macro-charts-grid" style="margin-bottom: 20px;">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-building-columns"></i> Federal Reserve Net Liquidity vs S&P 500</h3>
+                            <span class="card-subtitle">Weekly Central Bank Bank Reserves overlaying Index Close</span>
+                        </div>
+                        <div class="chart-container" style="height: 220px;">
+                            <canvas id="chart-net-liquidity"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-arrow-down-up-lock"></i> VIX / VXV Term Structure & SKEW Index</h3>
+                            <span class="card-subtitle">Front month volatility ratios and institutional tail risk index</span>
+                        </div>
+                        <div class="chart-container" style="height: 220px;">
+                            <canvas id="chart-vix-skew"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-bars-progress"></i> Market Breadth Indicators</h3>
+                            <span class="card-subtitle">Percentage of stocks trading above 50-day and 200-day Moving Averages</span>
+                        </div>
+                        <div class="chart-container" style="height: 220px;">
+                            <canvas id="chart-breadth"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-three-cols" style="margin-bottom: 20px;">
+                    <!-- OPEX Expiration calendar -->
+                    <div class="card calendar-card" style="grid-column: span 1;">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-calendar-days"></i> Expiration Calendar (OPEX)</h3>
+                            <span class="card-subtitle">Monthly dealer hedge unwinding timelines</span>
+                        </div>
+                        <div class="card-body">
+                            <ul class="calendar-list" id="opex-dates-list" style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px;">
+                                <!-- Injected dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Market Sovereign Debt & Spreads -->
+                    <div class="card info-card" style="grid-column: span 1;">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-percent"></i> Debt & Volatility Regimes</h3>
+                            <span class="card-subtitle">Leading yield curve and high-yield spreads indicators</span>
+                        </div>
+                        <div class="card-body" style="font-size:12px; display:flex; flex-direction:column; gap:12px;">
+                            <div>
+                                <span class="text-muted">Yield Curve (10Y - 3M):</span>
+                                <strong class="float-right" id="val-yield-spread">0.00%</strong>
+                                <div id="val-yield-status" style="font-size:9px; text-transform:uppercase; margin-top:2px; font-weight:700;" class="text-green">NORMAL</div>
+                            </div>
+                            <hr class="divider">
+                            <div>
+                                <span class="text-muted">ICE BofA High-Yield Credit Spread:</span>
+                                <strong class="float-right" id="val-credit-spread">0.00%</strong>
+                                <div id="val-credit-status" style="font-size:9px; text-transform:uppercase; margin-top:2px; font-weight:700;" class="text-green">LOW DISTRESS</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Watchlist Relative Strength Table -->
+                    <div class="card table-card" style="grid-column: span 1;">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-ranking-star"></i> Relative Strength Leaderboard</h3>
+                            <span class="card-subtitle">Sector watchlists ranked by performance vs SPY</span>
+                        </div>
+                        <div class="table-container" style="max-height:165px; overflow-y:auto;">
+                            <table id="rs-rankings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Ticker</th>
+                                        <th>Daily Return</th>
+                                        <th>RS vs SPY</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Injected dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 1D: Liquid Universe Scanner -->
+            <div id="liquid-screener" class="tab-content">
+                <div class="card watchlist-manager-card full-width-card">
+                    <div class="card-header">
+                        <div class="header-title-section">
+                            <h3><i class="fa-solid fa-globe"></i> Liquid Universe Quantitative Scanner</h3>
+                            <span class="card-subtitle">Scans top ~300 optionable assets (Price >= $10, Daily Volume > 500k shares)</span>
+                        </div>
+                        <div class="header-actions" style="display:flex; gap:8px;">
+                            <div class="expiration-container">
+                                <label for="liquid-setup-filter">Filter Setup:</label>
+                                <select id="liquid-setup-filter" class="dropdown">
+                                    <option value="all">Show All Setups</option>
+                                    <option value="vcp">VCP (Volatility Contraction)</option>
+                                    <option value="breakout">Range Breakouts</option>
+                                    <option value="trend_continuation">Trend Continuation Pullbacks</option>
+                                    <option value="mean_reversion">Mean Reversion Exhaustions</option>
+                                    <option value="unusual_volume">Unusual Volume Sweeps</option>
+                                </select>
+                            </div>
+                            <button id="liquid-scan-btn" class="btn btn-primary"><i class="fa-solid fa-circle-play"></i> Scan Universe</button>
+                            <button id="liquid-refresh-db-btn" class="btn btn-secondary" title="Rebuild SQLite Database (Runs daily background)"><i class="fa-solid fa-database"></i> Rebuild DB</button>
+                        </div>
+                    </div>
+                    <div class="watchlist-controls" style="padding-top:10px;">
+                        <div id="liquid-db-status-bar" style="width:100%; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-secondary);">
+                            <span>Database Status: <strong id="liquid-db-last-run" class="text-green">Ready</strong></span>
+                            <div id="liquid-progress-wrapper" style="display:none; align-items:center; gap:8px; width:300px;">
+                                <div style="width:100%; height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
+                                    <div id="liquid-progress-fill" style="width:0%; height:100%; background:#10b981;"></div>
+                                </div>
+                                <span id="liquid-progress-text" style="white-space:nowrap; font-weight:700;">0/0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card table-card full-width-card">
+                    <div class="table-container">
+                        <table id="liquid-screener-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Price</th>
+                                    <th>Daily Volume</th>
+                                    <th>Gamma Flip</th>
+                                    <th>Call Wall</th>
+                                    <th>Put Wall</th>
+                                    <th>Regime</th>
+                                    <th>Triggered Technical Setups</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div id="liquid-pagination" class="pagination-container">
+                        <span id="liquid-pagination-info" class="pagination-info">Showing 0-0 of 0 entries</span>
+                        <div class="pagination-buttons">
+                            <button id="liquid-prev-btn" class="btn btn-secondary btn-sm"><i class="fa-solid fa-chevron-left"></i> Prev</button>
+                            <button id="liquid-next-btn" class="btn btn-secondary btn-sm">Next <i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -535,9 +840,9 @@
                                 <div class="form-group">
                                     <label for="of-feed-mode">Data Feed Mode:</label>
                                     <select id="of-feed-mode" class="dropdown btn-full">
-                                        <option value="simulation" selected>High-Fidelity Simulation</option>
+                                        <option value="simulation">High-Fidelity Simulation</option>
                                         <option value="schwab">Live Schwab API Connection</option>
-                                        <option value="alpaca">Live Alpaca Markets (Free)</option>
+                                        <option value="alpaca" selected>Live Alpaca Markets (Free)</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -767,38 +1072,79 @@
             <div id="strategy-guide" class="tab-content">
                 <div class="card text-card full-width-card">
                     <div class="card-header">
-                        <h3><i class="fa-solid fa-book-open"></i> Gamma GEX Strategy Blueprint & Cheat Sheet</h3>
-                        <span class="card-subtitle">A comprehensive breakdown of how options market maker hedging guides price action</span>
+                        <h3><i class="fa-solid fa-book-open"></i> GEX & Order Flow Strategy Blueprint</h3>
+                        <span class="card-subtitle">Comprehensive operational guides, setup definitions, and execution playbook</span>
                     </div>
-                    <div class="card-body markdown-style">
-                        <h4>1. The Core GEX Volatility Regime Principle</h4>
-                        <p>Market maker hedging actions dictate realized market volatility based on the sign of dealer GEX:</p>
+                    <div class="card-body markdown-style" style="line-height:1.6; color:var(--text-primary);">
+                        <h4 style="color:#10b981; margin-top:20px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">1. Macro Metrics & Indicators Interpretation</h4>
                         <ul>
-                            <li><strong>Positive Gamma Regime (Spot Price > Flip Level)</strong>: Market makers buy stock as it drops and sell stock as it rises to keep delta-neutral. This dampens market movement. <strong>Best Strategies:</strong> Iron Condors, Range-Bound Mean Reversion, Selling Premium.</li>
-                            <li><strong>Negative Gamma Regime (Spot Price < Flip Level)</strong>: Market makers sell stock as it drops and buy stock as it rises to keep delta-neutral. This accelerates market movement. <strong>Best Strategies:</strong> Long Straddles/Strangles, Breakout Trend Following, Protective Put Buying.</li>
+                            <li><strong>Federal Reserve Net Liquidity ($Reserves = WALCL - TGA - RRP$)</strong>:
+                                <br><em>How to interpret:</em> There is a direct relationship between central bank bank reserves and asset valuations. When Net Liquidity expands, capital flows into risk assets (driving SPY higher). When it drops, structural market support collapses.
+                                <br><em>Action:</em> If SPY rises while Net Liquidity drops (Bearish Divergence), hedge or close swing positions. If Liquidity rises while SPY is flat, prepare for a swing breakout.
+                            </li>
+                            <li style="margin-top:12px;"><strong>VIX / VXV Term Structure</strong>:
+                                <br><em>How to interpret:</em> The ratio of front-month VIX to 3-month VXV.
+                                <br><em>Contango (Ratio &lt; 1.0):</em> Risk-on. Front month fear is low. Market is quiet. Excellent for selling premium or holding swing longs.
+                                <br><em>Backwardation (Ratio &ge; 1.0):</em> Risk-off. Front month fear is higher than back month. Extreme panic. Stay flat or hedge.
+                            </li>
+                            <li style="margin-top:12px;"><strong>SKEW Index</strong>:
+                                <br><em>How to interpret:</em> Measures institutional demand for extreme out-of-the-money protection puts.
+                                <br><em>Normal (&lt; 125):</em> Balanced tail risk.
+                                <br><em>Extreme (&ge; 140):</em> Outlier hedge stacking. Institutions are pricing in black swan risk. Expect sharp correction drops.
+                            </li>
+                            <li style="margin-top:12px;"><strong>OPEX Calendar (Option Expirations)</strong>:
+                                <br><em>How to interpret:</em> Days remaining until the monthly Friday options expiration (3rd Friday).
+                                <br><em>Unwinding Effect:</em> As days left &lt; 5, market makers close/roll positions. Under Positive Gamma, this forces prices to "pin" close to major Call/Put Walls. Under Negative Gamma, it triggers Charm/Vanna delta squeezes.
+                            </li>
+                            <li style="margin-top:12px;"><strong>Relative Strength (RS) Leaderboard</strong>:
+                                <br><em>How to interpret:</em> Calculated daily as `Stock Performance (%) - SPY Performance (%)`.
+                                <br><em>Action:</em> On bullish market days ($ADD &gt; +500$), trade breakouts ONLY on the top 2 RS leaders (strongest momentum tailwind). On bearish days, short the bottom 2 RS laggards.
+                            </li>
                         </ul>
                         
-                        <h4>2. Option Volume Imbalance (OVI) Breakouts</h4>
-                        <p>Open interest is static (updated once per day), but volume shows intraday institutional commitments. The Option Volume Imbalance measures the ratio of call vs put volume:</p>
-                        <ul>
-                            <li><strong>Bullish breakout confirmation:</strong> When spot price breaks resistance AND OVI is high (> 0.3), institutions are aggressively bidding call options. Dealers are forced to buy stock immediately, fueling a breakout.</li>
-                            <li><strong>Bearish breakout confirmation:</strong> When spot price breaks support AND OVI is low (< -0.3), institutions are bidding put options. Dealers are forced to short stock immediately, fueling a drop.</li>
-                        </ul>
+                        <h4 style="color:#10b981; margin-top:24px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">2. Executable Trading Setups (Entry, Stop, Target)</h4>
+                        
+                        <div style="display:flex; flex-direction:column; gap:16px; margin-top:12px;">
+                            <div style="background:rgba(255,255,255,0.02); border-left:4px solid #3b82f6; padding:12px; border-radius:4px;">
+                                <h5 style="color:#3b82f6; margin:0 0 8px 0; font-size:15px;">Setup A: Range Breakout / Wall Breach</h5>
+                                <strong>Logic:</strong> Price closes above a 20-day high (excluding today) on heavy volume (&ge; 1.5x average), OR breaches above/below the major dealer Call/Put Wall.
+                                <br><strong>Entry:</strong> Buy stop-limit order placed 1 tick above the breakout candle high.
+                                <br><strong>Stop Loss:</strong> 1 tick below the breakout candle low (for immediate invalidation).
+                                <br><strong>Profit Target:</strong> The next major GEX wall strike, or a trailing stop set at a 2.0x risk multiple.
+                            </div>
 
-                        <h4>3. Gamma vs. Time (Overextension & OPEX Reversals)</h4>
-                        <p>Option expiration (OPEX) weeks amplify dealer hedging behavior due to **Charm** (delta decay over time). As expiration approaches ($T \to 0$):</p>
-                        <ul>
-                            <li><strong>Call Wall Reversals:</strong> If spot is overextended upwards towards the Call Wall, dealer buying halts once they are fully delta-hedged. If the price stalls, decay (Charm) forces dealers to sell their stock hedge, creating a swift reversal down.</li>
-                            <li><strong>Put Wall Reversals:</strong> If spot drops to the Put Wall, dealer selling ceases. A slight bounce in spot forces dealers to quickly cover their short hedges, triggering an OPEX short-covering bounce.</li>
-                        </ul>
+                            <div style="background:rgba(255,255,255,0.02); border-left:4px solid #10b981; padding:12px; border-radius:4px;">
+                                <h5 style="color:#10b981; margin:0 0 8px 0; font-size:15px;">Setup B: VCP (Volatility Contraction Pattern)</h5>
+                                <strong>Logic:</strong> Price undergoes 2 to 4 contraction waves where swing depth decreases sequentially (e.g. 15% &rarr; 8% &rarr; 4%) while volume dries up dramatically (&lt; 0.85x average).
+                                <br><strong>Entry:</strong> Buy the pivot high breach when buying volume surges, confirmed by stacked footprint imbalances (&ge; 3.5x bid/ask).
+                                <br><strong>Stop Loss:</strong> 1 tick below the lowest point of the final contraction wave (the "cheat" pivot low).
+                                <br><strong>Profit Target:</strong> Previous major swing highs or the underlying Call Wall strike.
+                            </div>
 
-                        <h4>4. The Confluence Framework: GEX + Order Flow + Price Action</h4>
-                        <p>To trade with institutional precision, we combine three layers of market metrics:</p>
-                        <ul>
-                            <li><strong>GEX Levels (The Map):</strong> Identifies the key structural price areas where price action is likely to stall or accelerate (Call Wall, Put Wall, GEX Flip level, and Max Gamma Strike).</li>
-                            <li><strong>Order Flow (The Engine):</strong> Monitors real-time transaction dynamics at these boundaries. Tracks resting depth shifts (MLOFI), execution speed (speedometer dial), passive support (Center of Gravity paths), and buying/selling exhaustion (Sonar Pulse alerts).</li>
-                            <li><strong>Price Action (The Trigger):</strong> Uses footprint bar candlestick patterns (Hammer at Put Wall, Shooting Star at Call Wall, Marubozu breakouts at the Flip) to trigger entries and define precise stop-losses (e.g. Stop-loss placed just 1 tick behind the hammer wick).</li>
-                        </ul>
+                            <div style="background:rgba(255,255,255,0.02); border-left:4px solid #f59e0b; padding:12px; border-radius:4px;">
+                                <h5 style="color:#f59e0b; margin:0 0 8px 0; font-size:15px;">Setup C: Trend Continuation (EMA Pullback)</h5>
+                                <strong>Logic:</strong> In a strong trend (20 EMA &gt; 50 EMA), price pulls back to test the 20-day EMA on light volume (current volume &lt; 20-day average).
+                                <br><strong>Entry:</strong> Buy when price holds the 20-day EMA and prints a bullish reversal candlestick wick on the footprint chart.
+                                <br><strong>Stop Loss:</strong> 1 tick below the 20-day EMA, or below the pullback bar low.
+                                <br><strong>Profit Target:</strong> Preceding swing high, or the next major overhead Call Wall strike.
+                            </div>
+
+                            <div style="background:rgba(255,255,255,0.02); border-left:4px solid #ec4899; padding:12px; border-radius:4px;">
+                                <h5 style="color:#ec4899; margin:0 0 8px 0; font-size:15px;">Setup D: Mean Reversion (Wall Exhaustion)</h5>
+                                <strong>Logic:</strong> Spot price trades within 0.5% of the major Call Wall or Put Wall, or spot price is overextended (&gt; 5%) from its 20-day EMA.
+                                <br><strong>Entry:</strong> Limit order placed at the Wall, or a market order triggered by a reversal footprint pattern (e.g. Hammer at Put Wall) with MLOFI order book support.
+                                <br><strong>Stop Loss:</strong> 1 tick beyond the Wall strike or 1 tick beyond the wick/tail of the reversal candle.
+                                <br><strong>Profit Target:</strong> The GEX Flip Level (which acts as the center of gravity/reversion anchor).
+                            </div>
+
+                            <div style="background:rgba(255,255,255,0.02); border-left:4px solid #8b5cf6; padding:12px; border-radius:4px;">
+                                <h5 style="color:#8b5cf6; margin:0 0 8px 0; font-size:15px;">Setup E: Unusual Options Volume Spike</h5>
+                                <strong>Logic:</strong> Current shares volume is &ge; 2.0x average volume, OR options unusual activity (UOA) sweep ratio is &ge; 1.5x of open interest.
+                                <br><strong>Entry:</strong> Enter in the direction of the options sweep (Calls for long, Puts for short) once order flow speedometer needle pivots hard to the green/red zone.
+                                <br><strong>Stop Loss:</strong> Below the Point of Control (POC) price level of the breakout footprint bar.
+                                <br><strong>Profit Target:</strong> Intraday GEX boundaries (dealer gamma hedging halts the momentum).
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

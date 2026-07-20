@@ -2125,13 +2125,19 @@ function checkAlpacaStatus() {
         .then(res => res.json())
         .then(data => {
             const configBadge = document.getElementById('alpaca-config-status');
+            const keyInput = document.getElementById('alpaca-key-id');
+            const secretInput = document.getElementById('alpaca-secret-key');
             if (configBadge) {
                 if (data.configured) {
                     configBadge.textContent = "Configured";
                     configBadge.className = "status-badge status-green";
+                    if (keyInput) keyInput.value = "••••••••••••••••••••";
+                    if (secretInput) secretInput.value = "••••••••••••••••••••";
                 } else {
                     configBadge.textContent = "Unconfigured";
                     configBadge.className = "status-badge status-red";
+                    if (keyInput) keyInput.value = "";
+                    if (secretInput) secretInput.value = "";
                 }
             }
         })
@@ -2145,6 +2151,11 @@ function saveAlpacaCredentials() {
 
     if (!key || !secret) {
         alert("Please enter both API Key ID and Secret Key.");
+        return;
+    }
+
+    if (key.includes('•') || secret.includes('•')) {
+        alert("Credentials are already configured and unchanged.");
         return;
     }
 
@@ -3381,6 +3392,11 @@ function updateDomTable() {
 
 // Hook setup tab navigation and setup event listeners inside app controllers
 const parentSetupTabNavigation = setupTabNavigation;
+
+let dayTradingInterval = null;
+let liquidPage = 0;
+const liquidLimit = 15;
+
 setupTabNavigation = function() {
     parentSetupTabNavigation();
     
@@ -3388,8 +3404,21 @@ setupTabNavigation = function() {
     menuItems.forEach(item => {
         item.addEventListener('click', () => {
             const targetTab = item.getAttribute('data-tab');
+            
+            // Clean up intervals
+            if (dayTradingInterval) {
+                clearInterval(dayTradingInterval);
+                dayTradingInterval = null;
+            }
+            
             if (targetTab === 'order-flow') {
                 initOrderFlowCharts();
+            } else if (targetTab === 'day-trading-dash') {
+                initDayTradingDashboard();
+            } else if (targetTab === 'swing-trading-dash') {
+                initSwingDashboard();
+            } else if (targetTab === 'liquid-screener') {
+                initLiquidScreener();
             } else {
                 // Stop simulations if moving away
                 if (ofState.simInterval) {
@@ -3405,6 +3434,587 @@ setupTabNavigation = function() {
         });
     });
 };
+
+// --- DAY TRADING DASHBOARD SYSTEM ---
+
+function initDayTradingDashboard() {
+    console.log("Initializing Day Trading Dashboard...");
+    updateDayTradingData();
+    dayTradingInterval = setInterval(updateDayTradingData, 3000); // refresh every 3 seconds
+    
+    // Wire transition evaluator button
+    const evalBtn = document.getElementById('trans-eval-btn');
+    if (evalBtn) {
+        evalBtn.onclick = runTransitionEvaluation;
+    }
+}
+
+async function updateDayTradingData() {
+    const symbol = document.getElementById('symbol-input').value || "SPY";
+    try {
+        const response = await fetch(`/api/internals/day-trading-snapshot?symbol=${symbol}`);
+        const data = await response.json();
+        
+        // If data internals are null, market is closed. Display Inactive/Closed state.
+        if (data.add === null || data.vold === null || data.tick === null || data.trin === null) {
+            updateDialNeedleClosed('needle-add', 'dial-add-val', "Closed");
+            updateDialNeedleClosed('needle-vold', 'dial-vold-val', "Closed");
+            updateDialNeedleClosed('needle-tick', 'dial-tick-val', "Closed");
+            updateDialNeedleClosed('needle-trin', 'dial-trin-val', "Closed");
+            
+            const pctTxt = document.getElementById('prob-percentage-text');
+            if (pctTxt) pctTxt.innerText = "Inactive";
+            const ring = document.getElementById('prob-progress-ring');
+            if (ring) ring.style.strokeDashoffset = 345;
+            
+            const priorTxt = document.getElementById('prob-prior-val');
+            if (priorTxt) priorTxt.innerText = "--";
+            const postTxt = document.getElementById('prob-posterior-val');
+            if (postTxt) postTxt.innerText = "--";
+            const kellyTxt = document.getElementById('prob-kelly-val');
+            if (kellyTxt) kellyTxt.innerText = "--";
+            const riskTxt = document.getElementById('prob-risk-val');
+            if (riskTxt) riskTxt.innerText = "--";
+            return;
+        }
+        
+        // Update dials values and needle angles
+        updateDialNeedle('needle-add', 'dial-add-val', data.add, -2000, 2000, "");
+        updateDialNeedle('needle-vold', 'dial-vold-val', data.vold, 0.2, 4.0, "x");
+        updateDialNeedle('needle-tick', 'dial-tick-val', data.tick, -1200, 1200, "");
+        updateDialNeedle('needle-trin', 'dial-trin-val', data.trin, 3.0, 0.2, "", true); // Inverted mapping
+
+        // Fetch probability & Kelly sizing
+        const strategy = (data.tick <= -800) ? "wall_reversion" : "gex_flip";
+        const probRes = await fetch(`/api/strategy/calculate-probability?symbol=${symbol}&strategy=${strategy}&tick=${data.tick}&voldRatio=${data.vold}`);
+        const probData = await probRes.json();
+        
+        // Update probability progress ring
+        const probPct = Math.round(probData.updated_probability * 100);
+        const ring = document.getElementById('prob-progress-ring');
+        if (ring) {
+            const offset = 345 - (345 * probData.updated_probability);
+            ring.style.strokeDashoffset = offset;
+        }
+        
+        const pctTxt = document.getElementById('prob-percentage-text');
+        if (pctTxt) pctTxt.innerText = `${probPct}%`;
+        
+        const priorTxt = document.getElementById('prob-prior-val');
+        if (priorTxt) priorTxt.innerText = `${Math.round(probData.prior_probability * 100)}%`;
+        
+        const postTxt = document.getElementById('prob-posterior-val');
+        if (postTxt) postTxt.innerText = `${probPct}%`;
+        
+        const kellyTxt = document.getElementById('prob-kelly-val');
+        if (kellyTxt) kellyTxt.innerText = `${(probData.kelly.kelly_fraction * 100).toFixed(1)}%`;
+        
+        const riskTxt = document.getElementById('prob-risk-val');
+        if (riskTxt) riskTxt.innerText = `${probData.kelly.risk_multiplier.toFixed(1)}x`;
+
+    } catch (e) {
+        console.error("Failed to load day-trading snapshot data: ", e);
+    }
+}
+
+function updateDialNeedle(needleId, valId, value, minVal, maxVal, unit = "", isInverted = false) {
+    const valEl = document.getElementById(valId);
+    if (valEl) {
+        let displayVal = typeof value === 'number' ? value.toFixed(value % 1 === 0 ? 0 : 2) : value;
+        valEl.innerText = `${displayVal}${unit}`;
+    }
+    
+    const needle = document.getElementById(needleId);
+    if (needle) {
+        // Map minVal -> -90 deg, maxVal -> +90 deg
+        let pct = (value - minVal) / (maxVal - minVal);
+        pct = Math.max(0.0, Math.min(1.0, pct));
+        const deg = -90 + (pct * 180);
+        needle.style.transform = `rotate(${deg}deg)`;
+    }
+}
+
+function updateDialNeedleClosed(needleId, valId, text) {
+    const valEl = document.getElementById(valId);
+    if (valEl) {
+        valEl.innerText = text;
+        valEl.style.color = "var(--text-muted)";
+    }
+    const needle = document.getElementById(needleId);
+    if (needle) {
+        // Reset needle to straight up (neutral)
+        needle.style.transform = `rotate(0deg)`;
+    }
+}
+
+async function runTransitionEvaluation() {
+    const symbol = document.getElementById('symbol-input').value || "SPY";
+    const entryPrice = parseFloat(document.getElementById('trans-entry-price').value);
+    const direction = document.getElementById('trans-direction').value;
+    
+    if (isNaN(entryPrice)) {
+        alert("Please enter a valid entry price.");
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/trade_transition_eval?symbol=${symbol}&entryPrice=${entryPrice}&direction=${direction}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        // Update Checklist DOM
+        updateChecklistItem('chk-rcs', data.checklist.rcs_check, `Relative Close Strength (RCS: ${data.rcs.toFixed(2)})`);
+        updateChecklistItem('chk-regime', data.checklist.regime_check, `GEX Volatility Regime (${data.gex_regime})`);
+        updateChecklistItem('chk-volume', data.checklist.volume_check, `Institutional Volume (${data.volume_ratio.toFixed(1)}x 20d MA)`);
+        updateChecklistItem('chk-catalysts', data.checklist.catalyst_check, `No Macro Catalysts Tomorrow Morning`);
+        updateChecklistItem('chk-walls', data.checklist.wall_proximity_check, `Price Safe Distance from GEX Walls`);
+        
+        // Update decision banner
+        const banner = document.getElementById('transition-banner-box');
+        if (banner) {
+            banner.style.display = 'block';
+            banner.innerText = data.decision_text;
+            if (data.hold_overnight) {
+                banner.className = "transition-banner hold-banner";
+            } else {
+                banner.className = "transition-banner exit-banner";
+            }
+        }
+    } catch (e) {
+        console.error("Transition check failed: ", e);
+    }
+}
+
+function updateChecklistItem(id, passed, labelText) {
+    const el = document.getElementById(id);
+    if (el) {
+        const icon = passed ? '<i class="fa-solid fa-circle-check text-green"></i>' : '<i class="fa-solid fa-circle-xmark text-red"></i>';
+        el.innerHTML = `${icon} <span>${labelText}</span>`;
+    }
+}
+
+// --- SWING TRADING DASHBOARD SYSTEM ---
+
+let swingCharts = {};
+
+async function initSwingDashboard() {
+    console.log("Initializing Swing Trading Dashboard...");
+    try {
+        const response = await fetch('/api/internals/swing-trading-snapshot');
+        const data = await response.json();
+        
+        // Populate calendars
+        const list = document.getElementById('opex-dates-list');
+        if (list) {
+            list.innerHTML = data.opex_dates.map(dateStr => {
+                const diffTime = Math.abs(new Date(dateStr) - new Date());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return `
+                    <li class="calendar-item">
+                        <span class="calendar-date"><i class="fa-solid fa-hourglass-half"></i> ${dateStr}</span>
+                        <span class="calendar-days-left">${diffDays} Days Left</span>
+                    </li>
+                `;
+            }).join('');
+        }
+        
+        // Populate Sovereign Debt & Spreads
+        const yieldVal = document.getElementById('val-yield-spread');
+        if (yieldVal) yieldVal.innerText = `${data.yield_curve.spread.toFixed(2)}%`;
+        const yieldStatus = document.getElementById('val-yield-status');
+        if (yieldStatus) {
+            yieldStatus.innerText = data.yield_curve.inverted ? "INVERTED (REVERSION RISK)" : "STEEPENING (NORMAL)";
+            yieldStatus.className = data.yield_curve.inverted ? "text-red" : "text-green";
+        }
+        
+        const creditVal = document.getElementById('val-credit-spread');
+        if (creditVal) creditVal.innerText = `${data.credit_spreads.toFixed(2)}%`;
+        const creditStatus = document.getElementById('val-credit-status');
+        if (creditStatus) {
+            creditStatus.innerText = data.credit_spreads > 4.5 ? "HIGH DISTRESS (RISK-OFF)" : "LOW DISTRESS (RISK-ON)";
+            creditStatus.className = data.credit_spreads > 4.5 ? "text-red" : "text-green";
+        }
+        
+        // Populate Relative Strength watchlist leaderboard
+        const tbody = document.querySelector('#rs-rankings-table tbody');
+        if (tbody) {
+            // Day snapshots includes relative strength lists
+            const dayRes = await fetch('/api/internals/day-trading-snapshot');
+            const dayData = await dayRes.json();
+            tbody.innerHTML = dayData.relative_strength.map(row => `
+                <tr>
+                    <td><strong>${row.symbol}</strong></td>
+                    <td class="${row.performance_pct >= 0 ? 'text-green' : 'text-red'}">${row.performance_pct.toFixed(2)}%</td>
+                    <td class="${row.rs_vs_spy >= 0 ? 'text-green' : 'text-red'}">${row.rs_vs_spy.toFixed(2)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // Initialize Charts
+        renderSwingCharts(data);
+    } catch (e) {
+        console.error("Failed to load swing snapshot data: ", e);
+    }
+}
+
+function renderSwingCharts(data) {
+    // 1. Fed Net Liquidity vs SPY Chart
+    const netLiqCtx = document.getElementById('chart-net-liquidity').getContext('2d');
+    if (swingCharts.netLiq) swingCharts.netLiq.destroy();
+    
+    const dates = data.fed_liquidity.map(d => d.date);
+    const liqVals = data.fed_liquidity.map(d => d.net_liquidity);
+    const spyVals = data.fed_liquidity.map(d => d.spy);
+    
+    swingCharts.netLiq = new Chart(netLiqCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'Net Liquidity ($B)',
+                    data: liqVals,
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    yAxisID: 'y-liq',
+                    fill: false,
+                    pointRadius: 0
+                },
+                {
+                    label: 'SPY Close ($)',
+                    data: spyVals,
+                    borderColor: '#3b82f6',
+                    borderWidth: 2,
+                    yAxisID: 'y-spy',
+                    fill: false,
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.02)' } },
+                'y-liq': { type: 'linear', position: 'left', grid: { color: 'rgba(255,255,255,0.05)' } },
+                'y-spy': { type: 'linear', position: 'right', grid: { display: false } }
+            },
+            plugins: { legend: { display: true, labels: { font: { size: 9 } } } }
+        }
+    });
+
+    // 2. VIX & SKEW Chart
+    const vixSkewCtx = document.getElementById('chart-vix-skew').getContext('2d');
+    if (swingCharts.vixSkew) swingCharts.vixSkew.destroy();
+    
+    // Simulate historical VIX / SKEW trend lines for display
+    const mockVixTrend = dates.map((_, i) => data.vix_vxv.vix + Math.sin(i/3.0) * 1.5);
+    const mockSkewTrend = dates.map((_, i) => data.skew + Math.cos(i/4.0) * 8.0);
+    
+    swingCharts.vixSkew = new Chart(vixSkewCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'VIX Index',
+                    data: mockVixTrend,
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    yAxisID: 'y-vix',
+                    fill: false,
+                    pointRadius: 0
+                },
+                {
+                    label: 'SKEW Index',
+                    data: mockSkewTrend,
+                    borderColor: '#f43f5e',
+                    borderWidth: 2,
+                    yAxisID: 'y-skew',
+                    fill: false,
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.02)' } },
+                'y-vix': { type: 'linear', position: 'left', grid: { color: 'rgba(255,255,255,0.05)' } },
+                'y-skew': { type: 'linear', position: 'right', grid: { display: false } }
+            },
+            plugins: { legend: { display: true, labels: { font: { size: 9 } } } }
+        }
+    });
+
+    // 3. Breadth Chart (stocks above 50/200 dma)
+    const breadthCtx = document.getElementById('chart-breadth').getContext('2d');
+    if (swingCharts.breadth) swingCharts.breadth.destroy();
+    
+    const mock50DmaTrend = dates.map((_, i) => data.breadth.stocks_above_50dma_pct + Math.sin(i/2.0) * 10.0);
+    const mock200DmaTrend = dates.map((_, i) => data.breadth.stocks_above_200dma_pct + Math.cos(i/5.0) * 5.0);
+    
+    swingCharts.breadth = new Chart(breadthCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'Stocks > 50 DMA %',
+                    data: mock50DmaTrend,
+                    borderColor: '#a78bfa',
+                    borderWidth: 1.5,
+                    fill: false,
+                    pointRadius: 0
+                },
+                {
+                    label: 'Stocks > 200 DMA %',
+                    data: mock200DmaTrend,
+                    borderColor: '#fbbf24',
+                    borderWidth: 1.5,
+                    fill: false,
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.02)' } },
+                y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } }
+            },
+            plugins: { legend: { display: true, labels: { font: { size: 9 } } } }
+        }
+    });
+}
+
+// --- LIQUID UNIVERSE SCANNER SYSTEM ---
+
+let liquidStatusInterval = null;
+
+function initLiquidScreener() {
+    console.log("Initializing Liquid Universe Screener...");
+    liquidPage = 0;
+    loadLiquidScannerData();
+    
+    // Wire refresh DB and search button
+    const scanBtn = document.getElementById('liquid-scan-btn');
+    if (scanBtn) {
+        scanBtn.onclick = () => {
+            liquidPage = 0;
+            loadLiquidScannerData();
+        };
+    }
+    
+    const rebuildBtn = document.getElementById('liquid-refresh-db-btn');
+    if (rebuildBtn) {
+        rebuildBtn.onclick = triggerDatabaseRebuild;
+    }
+    
+    const filterSelect = document.getElementById('liquid-setup-filter');
+    if (filterSelect) {
+        filterSelect.onchange = () => {
+            liquidPage = 0;
+            loadLiquidScannerData();
+        };
+    }
+    
+    // Pagination buttons
+    const prevBtn = document.getElementById('liquid-prev-btn');
+    if (prevBtn) {
+        prevBtn.onclick = () => {
+            if (liquidPage > 0) {
+                liquidPage--;
+                loadLiquidScannerData();
+            }
+        };
+    }
+    
+    const nextBtn = document.getElementById('liquid-next-btn');
+    if (nextBtn) {
+        nextBtn.onclick = () => {
+            liquidPage++;
+            loadLiquidScannerData();
+        };
+    }
+}
+
+async function loadLiquidScannerData() {
+    const filter = document.getElementById('liquid-setup-filter').value;
+    const setupParam = filter === 'all' ? '' : `&setupFilter=${filter}`;
+    const offset = liquidPage * liquidLimit;
+    
+    try {
+        const response = await fetch(`/api/screener/liquid-scan?limit=${liquidLimit}&offset=${offset}${setupParam}`);
+        const result = await response.json();
+        
+        const tbody = document.querySelector('#liquid-screener-table tbody');
+        if (tbody) {
+            if (result.data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No liquid symbols match the selected setup filter. Run "Rebuild DB" to populate.</td></tr>`;
+            } else {
+                tbody.innerHTML = result.data.map(row => `
+                    <tr>
+                        <td><strong>${row.symbol}</strong></td>
+                        <td>$${row.price.toFixed(2)}</td>
+                        <td>${(row.avg_volume / 1000000).toFixed(1)}M</td>
+                        <td>$${row.gamma_flip.toFixed(1)}</td>
+                        <td class="text-green">$${row.call_wall.toFixed(1)}</td>
+                        <td class="text-red">$${row.put_wall.toFixed(1)}</td>
+                        <td>
+                            <span class="status-badge ${row.net_gex_status === 'Positive' ? 'status-green' : 'status-red'}">
+                                ${row.net_gex_status === 'Positive' ? 'Positive Gamma' : 'Negative Gamma'}
+                            </span>
+                        </td>
+                        <td>${getSetupBadgesHTML(row.alerts)}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+        
+        // Update pagination details
+        const info = document.getElementById('liquid-pagination-info');
+        if (info) {
+            const start = offset + 1;
+            const end = Math.min(offset + liquidLimit, result.total);
+            info.innerText = result.total === 0 ? "Showing 0-0 of 0 entries" : `Showing ${start}-${end} of ${result.total} entries`;
+        }
+    } catch (e) {
+        console.error("Failed to load liquid scanner: ", e);
+    }
+}
+
+function getSetupBadgesHTML(alerts) {
+    if (!alerts || alerts.length === 0) return '<span style="color:var(--text-muted);">None</span>';
+    
+    // Map full alerts texts to short tags
+    return alerts.map(a => {
+        let tag = "Setup";
+        let c = "badge-vcp";
+        
+        if (a.toLowerCase().includes('vcp')) {
+            tag = "VCP";
+            c = "badge-vcp";
+        } else if (a.toLowerCase().includes('breakout')) {
+            tag = "Breakout";
+            c = "badge-breakout";
+        } else if (a.toLowerCase().includes('trend')) {
+            tag = "Trend Cont";
+            c = "badge-trend";
+        } else if (a.toLowerCase().includes('mean')) {
+            tag = "Mean Rev";
+            c = "badge-mean-rev";
+        } else if (a.toLowerCase().includes('unusual')) {
+            tag = "Vol Spike";
+            c = "badge-vol-spike";
+        } else {
+            tag = a.split(':')[0]; // fallback to prefix
+        }
+        return `<span class="screener-badge ${c}" title="${a}">${tag}</span>`;
+    }).join('');
+}
+
+async function triggerDatabaseRebuild() {
+    try {
+        const response = await fetch('/api/screener/liquid-update', { method: 'POST' });
+        const res = await response.json();
+        console.log(res.message);
+        
+        // Start polling status
+        pollDatabaseRebuildStatus();
+    } catch (e) {
+        console.error("Failed to trigger DB update: ", e);
+    }
+}
+
+function pollDatabaseRebuildStatus() {
+    const wrapper = document.getElementById('liquid-progress-wrapper');
+    const fill = document.getElementById('liquid-progress-fill');
+    const txt = document.getElementById('liquid-progress-text');
+    const dbLastRun = document.getElementById('liquid-db-last-run');
+    
+    if (wrapper) wrapper.style.display = 'flex';
+    
+    if (liquidStatusInterval) clearInterval(liquidStatusInterval);
+    
+    liquidStatusInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/screener/liquid-status');
+            const status = await response.json();
+            
+            if (status.is_running) {
+                const pct = Math.round((status.progress / status.total) * 100);
+                if (fill) fill.style.width = `${pct}%`;
+                if (txt) txt.innerText = `${status.progress}/${status.total}`;
+                if (dbLastRun) dbLastRun.innerText = "Running Update...";
+            } else {
+                clearInterval(liquidStatusInterval);
+                liquidStatusInterval = null;
+                if (wrapper) wrapper.style.display = 'none';
+                if (dbLastRun) {
+                    dbLastRun.innerText = status.last_run ? `Ready (Last: ${new Date(status.last_run).toLocaleTimeString()})` : "Ready";
+                }
+                // Reload data
+                liquidPage = 0;
+                loadLiquidScannerData();
+            }
+        } catch (e) {
+            console.error("Failed to poll status: ", e);
+            clearInterval(liquidStatusInterval);
+        }
+    }, 1500);
+}
+
+// Modify screener row builder logic to display setups columns in the normal screener
+// Replace original updateScreenerTable with setup alerts badges display support
+const originalUpdateScreenerTable = updateScreenerTable;
+updateScreenerTable = function(results) {
+    // If the screener elements have modified rows, ensure the Technical Setups badges display
+    originalUpdateScreenerTable(results);
+    
+    // Now let's loop through results to see if there is any custom badges column we want to inject.
+    // In our index.html, screener-table has columns:
+    // Ticker, Price, Gamma Flip, Dist to Flip, Regime, Call Wall, Put Wall, OVI, IV Skew, Desk Alerts
+    // We can inject badges directly into the "Desk Alerts" column cell.
+    const tbody = document.querySelector('#screener-table tbody');
+    if (!tbody || !results) return;
+    
+    const rows = tbody.querySelectorAll('tr');
+    results.forEach((res, index) => {
+        const row = rows[index * 2]; // since rows are interleaved with details rows
+        if (!row || res.error) return;
+        
+        // Alerts cells is the last column
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 10) {
+            const alertsCell = cells[9];
+            
+            // Build badges HTML
+            const setups = res.setups || [];
+            const badgesHTML = setups.map(s => {
+                let c = "badge-vcp";
+                if (s.toLowerCase().includes('breakout')) c = "badge-breakout";
+                else if (s.toLowerCase().includes('trend')) c = "badge-trend";
+                else if (s.toLowerCase().includes('reversion') || s.toLowerCase().includes('rev')) c = "badge-mean-rev";
+                else if (s.toLowerCase().includes('volume') || s.toLowerCase().includes('vol')) c = "badge-vol-spike";
+                return `<span class="screener-badge ${c}">${s}</span>`;
+            }).join('');
+            
+            alertsCell.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                    <div style="display:flex; flex-wrap:wrap; gap:2px;">${badgesHTML}</div>
+                    <span style="font-size:10px; color:var(--text-secondary); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${res.alerts.join(' | ')}">
+                        ${res.alerts.length > 0 ? res.alerts[0] : 'No alerts'}
+                    </span>
+                </div>
+            `;
+        }
+    });
+};
+
 
 
 

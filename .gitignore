@@ -8,3 +8,6 @@ __pycache__/
 .vscode/
 .venv/
 node_modules/
+.alpaca_config.json
+.schwab_config.json
+*.db

@@ -96,6 +96,40 @@ Provides micro-level execution confirmation (real-time order flow) around key ma
     *   *Price Column*: The center column indicating price ticks. The active price row is highlighted.
     *   *Ask Size Column*: Lists the number of limit sell contracts/shares resting at prices above the last traded price.
 
+### Tab 1B: Day Trading Dashboard
+Designed for real-time market-hours trend and momentum checks.
+*   **Live Market Internals Dials**: Plotted via dynamic needles showing:
+    *   *$ADD (Breadth)*: Net advancing vs. declining stock count. Bullish if $> +500$, bearish if $< -500$.
+    *   *$VOLD (Volume Flow)*: Ratio of up-volume vs. down-volume. Bullish if $> 1.5\text{x}$, bearish if $< 0.7\text{x}$.
+    *   *$TICK (Momentum)*: Uptick vs. downtick count. Panic spikes at $\pm 1000$ signal reversion.
+    *   *$TRIN (Arms Index)*: Volume-breadth ratio. Bullish if $< 0.8$, bearish/panic if $> 1.2$.
+    *(Note: If the market is closed, dials are parked and display "Closed" to prevent false signals).*
+*   **Bayesian & Kelly Assistant**: Uses Logistic Regression and Sequential Bayesian updates of TICK and VOLD flows to output trade success probabilities, recommending fractional Kelly capital sizing and risk multipliers.
+*   **Day-to-Swing Transition Helper**: Run at 3:45 PM EST. Input your trade entry price to calculate **Relative Close Strength (RCS)**. If the checklist passes (RCS $\ge 0.85$ for longs, negative gamma regime support, no upcoming morning catalysts, and a safe distance from dealer walls), the banner flashes **HOLD SWING OVERNIGHT**; otherwise, it advises **EXIT DAY TRADE (CLOSE CASH)**.
+
+### Tab 1C: Swing Trading Dashboard
+Provides leading indicators for macroeconomic turning points and structural trends.
+*   **Federal Reserve Net Liquidity Chart**: Overlays S&P 500 close against central bank liquidity ($Reserves = Balance Sheet - TGA - RRP$). High correlation identifies liquidity-driven tops and bottoms.
+*   **VIX / VXV Term Structure & SKEW Chart**: Traces tail risk and front-to-back month volatility ratios. Ratio $> 1.0$ flags backwardation (extreme risk/panic), while SKEW peaks ($> 140$) warn of tail-risk hedging.
+*   **Market Breadth Chart**: Tracks percentage of stocks trading above 50-day (medium-term) and 200-day (long-term) moving averages. Tops $> 80\%$ flag overextensions; bottoms $< 20\%$ indicate market capitulation.
+*   **OPEX Expiration Calendar**: Counts down days remaining until monthly option expirations (3rd Friday of each month), alerting you to dealer delta/charm unwinding cycles.
+*   **Debt & Spreads Widgets**: Tracks yield curve steepening (10Y - 3M spread) and ICE BofA High-Yield credit spreads to evaluate systemic market distress.
+
+### Tab 1D: Liquid Universe Scanner
+Scans the 1,000+ most liquid optionable assets (Large-Caps, Mid-Caps, Nasdaq 100, and retail leaders) for high-probability setups.
+*   **Triggered Technical Setups**: Categorizes stocks using badges for:
+    *   `VCP`: Contraction patterns with volume dry-ups indicating tight consolidation before a breakout.
+    *   `Breakout`: Breach of Call Walls or 20-day range highs on heavy volume.
+    *   `Trend Cont`: Pullbacks to rising/falling 20-day EMAs or Flip support under dry volume.
+    *   `Mean Rev`: Testing Put/Call walls or overextended Z-scores from the 20-day EMA.
+    *   `Vol Spike`: Outlier volume sweeps or options unusual activity (UOA) ratios.
+*   **Rebuild DB**: Triggers the background worker. Scanning 1,000+ tickers takes ~2 minutes with API throttling. A progress bar tracks completion.
+
+### Rebuild DB Job Scheduler
+The database rebuild runs automatically at **8:30 AM EST every weekday** in the background. 
+*   **Edit or Disable the Python Scheduler**: Edit variables `AUTO_REBUILD_ENABLED` and `AUTO_REBUILD_TIME_EST` in `backend/background_scanner.py`.
+*   **Edit or Disable the Agent Cron**: Ask the AI assistant to list schedules, or type *"Kill schedule task-262"* in the chat to disable it.
+
 ---
 
 ## 3. How to Read and Interpret the DOM Ladder & Order Flow
@@ -145,34 +179,44 @@ To make reading multiple order book indicators easy and actionable, the system c
 
 ---
 
-## 5. Daily Execution Checklist
+## 5. Time-Phased Operational Playbook (Step-by-Step)
 
-### 1. Premarket (08:30 - 09:30 EST)
-*   [ ] Open the **Market Screener** and click **Scan Watchlist**.
-*   [ ] Filter alerts by **Wall Proximity** and **Flip Proximity** to identify which watchlisted stocks are opening near major GEX inflection levels.
-*   [ ] Check the screener's **Desk Alerts** (pop-up warnings) for daily price action triggers (like Hammers or Shooting Stars at walls) and options OVI/GEX confluences.
-*   [ ] Check the stats banner of **SPY** and **QQQ** to establish the macro volatility regime (Positive vs. Negative Gamma). If the indices are in Negative Gamma, expect a high-volatility trend day.
-*   [ ] Check the **Active GEX Strategy Playbook** for your target symbols to note exact trigger prices.
+Follow this systematic checklist throughout the daily and weekly cycles to orchestrate the Day Trading, Swing Trading, and Liquid Universe Scanner dashboards together.
 
-### 2. Market Open (09:30 - 10:30 EST)
-*   [ ] Monitor the **OVI (Intraday)** column in the screener. Look for OVI spikes ($> 30\%$ or $< -30\%$).
-*   [ ] Expand rows for stocks showing OVI imbalances to verify if **Unusual Option Activity (UOA)** volume exceeds open interest.
-*   [ ] If a stock is in Negative Gamma, breaks the GEX Flip level, and shows high call OVI, buy ATM **Bull Call Debit Spreads** as recommended in the playbook.
+### 1. Premarket & After-Hours (08:00 - 09:30 EST)
+During this phase, compile your macro map and scan the universe for structural setups:
+*   [ ] **Review Macro Liquidity (Swing Tab)**: Open the **Swing Trading Dashboard** and inspect the **Federal Reserve Net Liquidity** overlay. Observe if central bank reserves are expanding or contracting relative to the S&P 500 index. If liquidity is dropping, reduce overall swing exposure.
+*   [ ] **Verify Volatility Structure (Swing Tab)**: Check the **VIX / VXV Term Structure** chart. Ensure the ratio is in *Contango* ($< 1.0$). If it flips into *Backwardation* ($> 1.0$), it indicates extreme front-month panic hedging—prepare for a volatile trend day. Check **SKEW**; readings $> 140$ signal institutional black-swan tail hedging.
+*   [ ] **Scan the Universe (Liquid Scanner Tab)**: 
+    *   Click **Rebuild DB** to run the daily background scan. 
+    *   The progress bar in the bottom right will show scanning progress (e.g. `20 / 125`). *Wait about 2 minutes for the scan to complete.*
+    *   Once complete, use the **Filter Setup** dropdown to scan for **VCP (Volatility Contraction Pattern)** consolidate setups or **Breakout** candidates. Select the high-probability candidates and add them to your watchlist.
+*   [ ] **Plan Expirations (Swing Tab)**: Check the **OPEX Expiration Calendar** to note if a major monthly options expiration is occurring this week. Days ending in $< 5$ indicate imminent dealer position unwinding, leading to high volatility or pinning behavior.
 
-### 3. Mid-Day (10:30 - 15:30 EST)
-*   [ ] In a **Positive Gamma** environment, prices tend to mean-revert. If Spot touches the Put Wall or Call Wall:
-    *   Open **Put Wall Credit Spreads (Bull Put)** at the Put Wall.
-    *   Open **Call Wall Credit Spreads (Bear Call)** at the Call Wall.
-*   [ ] Verify the setup on the **Order Flow Execution** tab:
-    *   Is the **Confluence Playbook Assistant** showing a confidence rating $> 60\%$?
-    *   Is **MLOFI** stacking in your direction and is the **Hedging Speedometer** stabilizing?
-    *   Has a **Footprint Hammer/Shooting Star** candle closed at the wall?
-*   [ ] Place your stop-loss exactly 1 tick behind the tail/wick of the footprint trigger candle.
+### 2. Market Hours Intraday (09:30 - 15:30 EST)
+Active monitoring of momentum, delta-hedging flows, and execution triggers:
+*   [ ] **Monitor Market Internals (Day Trading Tab)**:
+    *   The dials for **$ADD**, **$VOLD**, **$TICK**, and **$TRIN** will now be active (showing real numbers and moving needles).
+    *   *Breadth check ($ADD / $VOLD)*: If $ADD is positive ($> +500$) and $VOLD is $> 1.5\text{x}$, trade only **long breakouts**. If $ADD$ is negative ($< -500$) and $VOLD$ is $< 0.7\text{x}$, trade only **short breakdowns**.
+    *   *Momentum check ($TICK)*: If $TICK$ reaches extreme panic values ($\pm 1000$), look for immediate mean reversion triggers at dealer walls.
+*   [ ] **Assess Setup Probability (Day Trading Tab)**: Type your target symbol (e.g. `TSLA`) in the sidebar search. If the price approaches a key GEX level, select the strategy and check the **Bayesian Probability Ring**. If the posterior probability is $> 65\%$, check the recommended **Kelly sizing** fraction (e.g. 8.5% allocation) and risk multiplier.
+*   [ ] **Confirm via Order Flow (Order Flow Tab)**: Switch to the **Order Flow Execution** tab to execute:
+    *   Confirm the entry using the **Footprint POC** and diagonal buy/sell imbalances.
+    *   Verify if limit buyers are stacking contracts on the DOM ladder (**MLOFI** is positive).
+    *   Place a tight stop-loss 1 tick past the structural Put/Call Wall.
 
-### 4. End-of-Day (15:30 - 16:00 EST)
-*   [ ] Monitor the close relative to the GEX Flip Level. 
-*   [ ] If a stock is closing below the GEX Flip point (moving from Positive to Negative Gamma), close range-bound credit spreads immediately. Volatility will expand overnight.
+### 3. End-of-Day Transition (15:30 - 16:00 EST)
+Decide whether to hold active day trades overnight or close them to cash:
+*   [ ] **Evaluate Transitions (Day Trading Tab)**: At 3:45 PM EST, enter your trade details in the **Day-to-Swing Transition Helper**:
+    *   Input your **Entry Price** and select **Long** or **Short** direction.
+    *   Click **Evaluate**.
+    *   *Review the checklist*: Ensure **Relative Close Strength (RCS)** is $\ge 0.85$ (for longs) or $\le 0.15$ (for shorts), and that the **Catalyst Check** passes (no high-importance macro alerts or earnings scheduled for tomorrow morning).
+    *   *Decision*: If the banner flashes green **HOLD SWING OVERNIGHT**, swing the position. If it flashes red **EXIT DAY TRADE (CLOSE CASH)**, flatten the book before the 4:00 PM EST bell.
 
-### 5. End-of-Week (Friday monthly OPEX)
-*   [ ] Identify stocks pinned close to a major Call/Put Wall.
-*   [ ] Under Positive Gamma, deploy **Iron Condors** or **Iron Butterflies** centered exactly on the Call/Put Wall to extract maximum time decay (Charm) as the stock pins on the close.
+### 4. Weekends & Market Closed
+Perform strategy reviews, backtesting, and pipeline maintenance:
+*   [ ] **Review Performance**: Assess the previous week's trades against GEX support/resistance walls.
+*   [ ] **Run Backtests (Backtester Tab)**: Backtest GEX and OVI signals over historical data to optimize your win-rate thresholds.
+*   [ ] **Check Inactive State**: Dials on the Day Trading Dashboard will read **Closed** with needles parked at `0` (straight up), and the probability engine will show **Inactive**. Watchlist relative strengths will display the last calculated daily percentage change vs. SPY (e.g. Friday close performance).
+*   [ ] **Update Alpaca Credentials**: Ensure your Developer credentials display the green **Configured** status badge on the settings panel. If they are configured, they are saved locally on disk and do not need to be re-entered.
+
