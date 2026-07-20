@@ -123,6 +123,7 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
         volume_profile_poc = 0.0
         volume_profile_vah = 0.0
         volume_profile_val = 0.0
+        volume_profile_bins = []
         volume_profile_poc_25d = 0.0
         volume_profile_vah_25d = 0.0
         volume_profile_val_25d = 0.0
@@ -142,6 +143,7 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
                 volume_profile_poc = scr.get("volume_profile_poc", 0.0)
                 volume_profile_vah = scr.get("volume_profile_vah", 0.0)
                 volume_profile_val = scr.get("volume_profile_val", 0.0)
+                volume_profile_bins = scr.get("volume_profile_bins", [])
                 volume_profile_poc_25d = scr.get("volume_profile_poc_25d", 0.0)
                 volume_profile_vah_25d = scr.get("volume_profile_vah_25d", 0.0)
                 volume_profile_val_25d = scr.get("volume_profile_val_25d", 0.0)
@@ -175,6 +177,7 @@ def get_gex_profile(symbol: str, expiration: Optional[str] = Query(None), max_ex
             'volume_profile_poc': volume_profile_poc,
             'volume_profile_vah': volume_profile_vah,
             'volume_profile_val': volume_profile_val,
+            'volume_profile_bins': volume_profile_bins,
             'volume_profile_poc_25d': volume_profile_poc_25d,
             'volume_profile_vah_25d': volume_profile_vah_25d,
             'volume_profile_val_25d': volume_profile_val_25d,

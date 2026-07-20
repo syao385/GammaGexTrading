@@ -85,7 +85,7 @@ class DataFetcher:
         Returns a dictionary containing underlying details and option dataframes.
         """
         symbol = symbol.upper().strip()
-        cache_key = (symbol, max_expirations)
+        cache_key = symbol
         now = datetime.now()
         
         # Check cache

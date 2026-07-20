@@ -345,6 +345,7 @@ class MarketScreener:
                     'volume_profile_poc': float(vp_5d['poc']),
                     'volume_profile_vah': float(vp_5d['vah']),
                     'volume_profile_val': float(vp_5d['val']),
+                    'volume_profile_bins': vp_5d.get('profile', []),
                     'volume_profile_poc_25d': float(vp_25d['poc']),
                     'volume_profile_vah_25d': float(vp_25d['vah']),
                     'volume_profile_val_25d': float(vp_25d['val']),

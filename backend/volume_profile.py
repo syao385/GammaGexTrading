@@ -114,12 +114,18 @@ class VolumeProfileCalculator:
             hvn = sorted(hvn, key=lambda p: bin_volumes[max(0, min(bins-1, np.digitize([p], price_bins)[0] - 1))], reverse=True)
             lvn = sorted(lvn, key=lambda p: bin_volumes[max(0, min(bins-1, np.digitize([p], price_bins)[0] - 1))])
             
+            profile = []
+            for i in range(bins):
+                bin_center = float((price_bins[i] + price_bins[i+1]) / 2.0)
+                profile.append({"price": bin_center, "volume": float(bin_volumes[i])})
+
             return {
                 "poc": poc,
                 "vah": vah,
                 "val": val,
                 "hvn": hvn[:5],  # top 5 HVNs
-                "lvn": lvn[:5]   # top 5 LVNs
+                "lvn": lvn[:5],  # top 5 LVNs
+                "profile": profile
             }
         except Exception as e:
             logger.error(f"Volume Profile: calculation failed: {e}")

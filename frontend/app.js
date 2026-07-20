@@ -1530,6 +1530,10 @@ let ofState = {
     callWall: 505.0,
     flipLevel: 500.0,
     isPositiveGex: true,
+    volumeProfilePoc: null,
+    volumeProfileVah: null,
+    volumeProfileVal: null,
+    volumeProfileBins: [],
     
     // User Configurations
     tickConsolidation: 0.50, // price bin size
@@ -1676,6 +1680,12 @@ function resetOrderFlowData() {
     ofState.maxGammaStrike = lastFetchedGexData ? lastFetchedGexData.max_gex_strike : ofState.spotPrice;
     const regimeEl = document.getElementById('regime-val');
     ofState.isPositiveGex = regimeEl ? regimeEl.textContent.includes('Positive') : true;
+    
+    // Sync Volume Profile levels
+    ofState.volumeProfilePoc = lastFetchedGexData ? lastFetchedGexData.volume_profile_poc : null;
+    ofState.volumeProfileVah = lastFetchedGexData ? lastFetchedGexData.volume_profile_vah : null;
+    ofState.volumeProfileVal = lastFetchedGexData ? lastFetchedGexData.volume_profile_val : null;
+    ofState.volumeProfileBins = lastFetchedGexData ? lastFetchedGexData.volume_profile_bins || [] : [];
     ofState.mlofi = 0;
     ofState.mlofiHistory = Array(150).fill(0);
     ofState.cogBid = ofState.spotPrice - 0.20;
@@ -2694,6 +2704,52 @@ function drawFootprint() {
     if (ofState.maxGammaStrike) {
         drawGexLine(ofState.maxGammaStrike, '#00e1ff', 'Max Gamma');
     }
+    
+    // Draw Volume Profile levels
+    if (ofState.volumeProfilePoc) {
+        drawGexLine(ofState.volumeProfilePoc, '#eab308', '5D POC');
+    }
+    if (ofState.volumeProfileVah) {
+        drawGexLine(ofState.volumeProfileVah, '#6366f1', '5D VAH');
+    }
+    if (ofState.volumeProfileVal) {
+        drawGexLine(ofState.volumeProfileVal, '#ec4899', '5D VAL');
+    }
+
+    // Draw Horizontal Volume Profile Histogram on Footprint Chart
+    if (ofState.volumeProfileBins && ofState.volumeProfileBins.length > 0) {
+        ctx.save();
+        let maxVol = 0;
+        ofState.volumeProfileBins.forEach(bin => {
+            if (bin.volume > maxVol) maxVol = bin.volume;
+        });
+        
+        if (maxVol > 0) {
+            const maxBarW = chartW * 0.18;
+            const val = ofState.volumeProfileVal || 0;
+            const vah = ofState.volumeProfileVah || 999999;
+            
+            ofState.volumeProfileBins.forEach(bin => {
+                const price = bin.price;
+                const volume = bin.volume;
+                const y = getY(price);
+                
+                if (y >= padTop && y <= padTop + chartH) {
+                    const barW = (volume / maxVol) * maxBarW;
+                    const binH = Math.max(2, (chartH / ofState.volumeProfileBins.length));
+                    const x = w - padRight - barW;
+                    
+                    if (price >= val && price <= vah) {
+                        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+                    } else {
+                        ctx.fillStyle = 'rgba(156, 163, 175, 0.06)';
+                    }
+                    ctx.fillRect(x, y - binH / 2, barW, binH - 1.5);
+                }
+            });
+        }
+        ctx.restore();
+    }
 
     // Draw Price Axes
     ctx.save();
@@ -2945,6 +3001,42 @@ function drawBookmap() {
     }
     bm.restore();
 
+    // 1b. Draw Horizontal Volume Profile Histogram on the right-hand edge
+    if (ofState.volumeProfileBins && ofState.volumeProfileBins.length > 0) {
+        bm.save();
+        
+        let maxVol = 0;
+        ofState.volumeProfileBins.forEach(bin => {
+            if (bin.volume > maxVol) maxVol = bin.volume;
+        });
+        
+        if (maxVol > 0) {
+            const maxBarW = chartW * 0.22;
+            const val = ofState.volumeProfileVal || 0;
+            const vah = ofState.volumeProfileVah || 999999;
+            
+            ofState.volumeProfileBins.forEach(bin => {
+                const price = bin.price;
+                const volume = bin.volume;
+                const y = getY(price);
+                
+                if (y >= padTop && y <= padTop + chartH) {
+                    const barW = (volume / maxVol) * maxBarW;
+                    const binH = Math.max(2, (chartH / ofState.volumeProfileBins.length));
+                    const x = w - padRight - barW;
+                    
+                    if (price >= val && price <= vah) {
+                        bm.fillStyle = 'rgba(59, 130, 246, 0.18)';
+                    } else {
+                        bm.fillStyle = 'rgba(156, 163, 175, 0.08)';
+                    }
+                    bm.fillRect(x, y - binH / 2, barW, binH - 1.5);
+                }
+            });
+        }
+        bm.restore();
+    }
+
     // 2. Draw Bookmap GEX lines
     const drawGexGuide = (price, color) => {
         const y = getY(price);
@@ -2964,6 +3056,34 @@ function drawBookmap() {
     if (ofState.maxGammaStrike) {
         drawGexGuide(ofState.maxGammaStrike, 'rgba(0, 225, 255, 0.7)');
     }
+
+    // Draw Volume Profile lines (POC, VAH, VAL) on Bookmap
+    const drawVolumeProfileGuide = (price, color, label, isSolid = false) => {
+        if (!price) return;
+        const y = getY(price);
+        if (y >= padTop && y <= padTop + chartH) {
+            bm.save();
+            bm.beginPath();
+            bm.strokeStyle = color;
+            if (!isSolid) {
+                bm.setLineDash([6, 3]);
+            }
+            bm.lineWidth = 1.5 * window.devicePixelRatio;
+            bm.moveTo(padLeft, y);
+            bm.lineTo(w - padRight, y);
+            bm.stroke();
+            
+            bm.fillStyle = color;
+            bm.font = `bold ${8 * window.devicePixelRatio}px Outfit`;
+            bm.textAlign = 'left';
+            bm.fillText(label, w - padRight + 2, y);
+            bm.restore();
+        }
+    };
+    
+    drawVolumeProfileGuide(ofState.volumeProfilePoc, '#eab308', '5D POC', true);
+    drawVolumeProfileGuide(ofState.volumeProfileVah, '#6366f1', '5D VAH');
+    drawVolumeProfileGuide(ofState.volumeProfileVal, '#ec4899', '5D VAL');
 
     // Draw LOB Center of Gravity lines
     const drawLobCog = (price, color, label) => {
