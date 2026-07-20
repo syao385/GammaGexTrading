@@ -2679,9 +2679,11 @@ function drawFootprint() {
         if (y >= padTop && y <= padTop + chartH) {
             ctx.save();
             ctx.beginPath();
-            ctx.setLineDash([6, 6]);
+            if (label !== "5D POC") {
+                ctx.setLineDash([6, 6]);
+            }
             ctx.strokeStyle = color;
-            ctx.lineWidth = 1.5 * window.devicePixelRatio;
+            ctx.lineWidth = (label === "5D POC" ? 2.5 : 1.5) * window.devicePixelRatio;
             ctx.moveTo(padLeft, y);
             ctx.lineTo(w - padRight, y);
             ctx.stroke();
@@ -2740,11 +2742,15 @@ function drawFootprint() {
                     const x = w - padRight - barW;
                     
                     if (price >= val && price <= vah) {
-                        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+                        ctx.fillStyle = 'rgba(59, 130, 246, 0.35)';
+                        ctx.strokeStyle = 'rgba(59, 130, 246, 0.75)';
                     } else {
-                        ctx.fillStyle = 'rgba(156, 163, 175, 0.06)';
+                        ctx.fillStyle = 'rgba(156, 163, 175, 0.15)';
+                        ctx.strokeStyle = 'rgba(156, 163, 175, 0.40)';
                     }
+                    ctx.lineWidth = 1 * window.devicePixelRatio;
                     ctx.fillRect(x, y - binH / 2, barW, binH - 1.5);
+                    ctx.strokeRect(x, y - binH / 2, barW, binH - 1.5);
                 }
             });
         }
@@ -3026,11 +3032,15 @@ function drawBookmap() {
                     const x = w - padRight - barW;
                     
                     if (price >= val && price <= vah) {
-                        bm.fillStyle = 'rgba(59, 130, 246, 0.18)';
+                        bm.fillStyle = 'rgba(59, 130, 246, 0.40)';
+                        bm.strokeStyle = 'rgba(59, 130, 246, 0.85)';
                     } else {
-                        bm.fillStyle = 'rgba(156, 163, 175, 0.08)';
+                        bm.fillStyle = 'rgba(156, 163, 175, 0.18)';
+                        bm.strokeStyle = 'rgba(156, 163, 175, 0.45)';
                     }
+                    bm.lineWidth = 1 * window.devicePixelRatio;
                     bm.fillRect(x, y - binH / 2, barW, binH - 1.5);
+                    bm.strokeRect(x, y - binH / 2, barW, binH - 1.5);
                 }
             });
         }
@@ -3068,15 +3078,21 @@ function drawBookmap() {
             if (!isSolid) {
                 bm.setLineDash([6, 3]);
             }
-            bm.lineWidth = 1.5 * window.devicePixelRatio;
+            bm.lineWidth = (isSolid ? 2.5 : 1.5) * window.devicePixelRatio;
             bm.moveTo(padLeft, y);
             bm.lineTo(w - padRight, y);
             bm.stroke();
             
+            // Draw text label with a pill background so it pops!
+            bm.font = `bold ${8.5 * window.devicePixelRatio}px Outfit`;
+            const textWidth = bm.measureText(label).width;
+            bm.fillStyle = 'rgba(7, 9, 19, 0.85)';
+            bm.fillRect(w - padRight + 2, y - 6 * window.devicePixelRatio, textWidth + 6, 12 * window.devicePixelRatio);
+            
             bm.fillStyle = color;
-            bm.font = `bold ${8 * window.devicePixelRatio}px Outfit`;
             bm.textAlign = 'left';
-            bm.fillText(label, w - padRight + 2, y);
+            bm.textBaseline = 'middle';
+            bm.fillText(label, w - padRight + 5, y);
             bm.restore();
         }
     };
@@ -3126,11 +3142,64 @@ function drawBookmap() {
     // 4. Draw Scrolling price line and trade circles
     if (sliceData.length === 0) return;
 
+    // 4a. Draw scrolling candlesticks over the heatmap background
     bm.save();
-    bm.lineWidth = 2 * window.devicePixelRatio;
-    bm.strokeStyle = '#ffffff';
-    bm.shadowColor = 'rgba(255, 255, 255, 0.15)';
-    bm.shadowBlur = 4 * window.devicePixelRatio;
+    const numCandles = 25;
+    const ticksPerCandle = Math.ceil(sliceData.length / numCandles);
+    
+    for (let i = 0; i < numCandles; i++) {
+        const startIdx = i * ticksPerCandle;
+        if (startIdx >= sliceData.length) break;
+        
+        const endIdx = Math.min(sliceData.length, (i + 1) * ticksPerCandle);
+        const ticks = sliceData.slice(startIdx, endIdx);
+        
+        if (ticks.length > 0) {
+            const open = ticks[0].price;
+            const close = ticks[ticks.length - 1].price;
+            const high = Math.max(...ticks.map(t => t.price));
+            const low = Math.min(...ticks.map(t => t.price));
+            
+            const candleCenterIdx = (startIdx + endIdx - 1) / 2;
+            const x = padLeft + (candleCenterIdx / maxItems) * chartW;
+            
+            const yOpen = getY(open);
+            const yClose = getY(close);
+            const yHigh = getY(high);
+            const yLow = getY(low);
+            
+            const isBullish = close >= open;
+            const candleColor = isBullish ? 'rgba(16, 185, 129, 0.32)' : 'rgba(244, 63, 94, 0.32)';
+            const borderCol = isBullish ? 'rgba(16, 185, 129, 0.85)' : 'rgba(244, 63, 94, 0.85)';
+            
+            // Draw wick
+            bm.beginPath();
+            bm.strokeStyle = borderCol;
+            bm.lineWidth = 1.2 * window.devicePixelRatio;
+            bm.moveTo(x, yLow);
+            bm.lineTo(x, yHigh);
+            bm.stroke();
+            
+            // Draw body
+            const bodyH = Math.max(2 * window.devicePixelRatio, Math.abs(yClose - yOpen));
+            const bodyY = Math.min(yOpen, yClose);
+            const candleW = (ticks.length / maxItems) * chartW;
+            const bodyW = Math.max(4 * window.devicePixelRatio, candleW * 0.75);
+            
+            bm.fillStyle = candleColor;
+            bm.strokeStyle = borderCol;
+            bm.lineWidth = 1 * window.devicePixelRatio;
+            bm.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
+            bm.strokeRect(x - bodyW / 2, bodyY, bodyW, bodyH);
+        }
+    }
+    bm.restore();
+
+    bm.save();
+    bm.lineWidth = 1.5 * window.devicePixelRatio;
+    bm.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    bm.shadowColor = 'rgba(255, 255, 255, 0.1)';
+    bm.shadowBlur = 2 * window.devicePixelRatio;
     bm.beginPath();
 
     sliceData.forEach((tick, idx) => {
