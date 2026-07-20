@@ -24,6 +24,20 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWatchlist();
     setupEventListeners();
     
+    // Sidebar Collapse Toggle Button
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    const sidebar = document.querySelector('.sidebar');
+    if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            
+            // Dispatch window resize event so canvases and Chart.js scale immediately
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 250);
+        });
+    }
+    
     // Initial data load
     fetchGexData(currentSymbol, currentExpiration);
 });
@@ -1546,6 +1560,7 @@ let ofState = {
     heatmapContrast: 35, // L2 brightness multiplier
     bubbleScale: 2.0, // trade circle size scaler
     showCumDelta: true, // toggle delta subchart
+    showGrid: true, // toggle grid lines overlay
     
     // Canvas Navigation
     zoomLevel: 1.0,
@@ -2301,6 +2316,15 @@ function setupOrderFlowControls() {
             renderOrderFlowCharts();
         });
     }
+
+    // Show Grid Toggle checkbox binding
+    const showGridCheck = document.getElementById('of-show-grid');
+    if (showGridCheck) {
+        showGridCheck.addEventListener('change', (e) => {
+            ofState.showGrid = e.target.checked;
+            renderOrderFlowCharts();
+        });
+    }
 }
 
 // Fetch Schwab authentication and configurations status
@@ -2827,17 +2851,47 @@ function drawFootprint() {
         ctx.restore();
     }
 
-    // Draw Price Axes
+    // Draw Price Axes & Grid Lines
     ctx.save();
+    
+    // Draw grid lines first if enabled
+    if (ofState.showGrid) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1 * window.devicePixelRatio;
+        const tickStep = priceRange > 15 ? 2.5 : (priceRange > 5 ? 1.0 : 0.50);
+        for (let p = Math.floor(minPrice); p <= maxPrice; p += tickStep) {
+            const y = getY(p);
+            if (y >= padTop && y <= padTop + chartH) {
+                ctx.beginPath();
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(w - padRight, y);
+                ctx.stroke();
+            }
+        }
+        // Vertical grid lines at columns
+        const barCount = ofState.footprintBars.length;
+        for (let i = 0; i < barCount; i++) {
+            const x = getX(i);
+            if (x >= padLeft && x <= padLeft + chartW) {
+                ctx.beginPath();
+                ctx.moveTo(x, padTop);
+                ctx.lineTo(x, padTop + chartH);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+
     ctx.fillStyle = '#6b7280';
     ctx.font = `${9.5 * window.devicePixelRatio}px Outfit`;
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const tickStep = priceRange > 15 ? 2.5 : (priceRange > 5 ? 1.0 : 0.50);
     for (let p = Math.floor(minPrice); p <= maxPrice; p += tickStep) {
         const y = getY(p);
         if (y >= padTop && y <= padTop + chartH) {
-            ctx.fillText(`$${p.toFixed(2)}`, padLeft - 8, y);
+            ctx.fillText(`$${p.toFixed(2)}`, w - padRight + 8, y);
         }
     }
     ctx.restore();
@@ -3195,17 +3249,46 @@ function drawBookmap() {
     drawLobCog(ofState.cogBid, 'rgba(16, 185, 129, 0.4)', 'Bid CoG');
     drawLobCog(ofState.cogAsk, 'rgba(244, 63, 94, 0.4)', 'Ask CoG');
 
-    // 3. Draw Price Y-Axis Labels
+    // 3. Draw Price Y-Axis Labels & Grid Lines
     bm.save();
+    
+    // Draw grid lines if enabled
+    if (ofState.showGrid) {
+        bm.save();
+        bm.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        bm.lineWidth = 1 * window.devicePixelRatio;
+        const yTickStep = priceRange > 15 ? 5.0 : (priceRange > 5 ? 1.0 : 0.25);
+        const startYTick = Math.ceil(minPrice / yTickStep) * yTickStep;
+        for (let p = startYTick; p <= maxPrice; p += yTickStep) {
+            const y = getY(p);
+            if (y >= padTop && y <= padTop + chartH) {
+                bm.beginPath();
+                bm.moveTo(padLeft, y);
+                bm.lineTo(w - padRight, y);
+                bm.stroke();
+            }
+        }
+        // Vertical grid lines (6 columns across chart width)
+        const numCols = 6;
+        for (let i = 0; i <= numCols; i++) {
+            const x = padLeft + (i / numCols) * chartW;
+            bm.beginPath();
+            bm.moveTo(x, padTop);
+            bm.lineTo(x, padTop + chartH);
+            bm.stroke();
+        }
+        bm.restore();
+    }
+
     bm.fillStyle = '#6b7280';
     bm.font = `${9 * window.devicePixelRatio}px Outfit`;
-    bm.textAlign = 'right';
+    bm.textAlign = 'left';
     bm.textBaseline = 'middle';
     
     const yTickStep = priceRange > 15 ? 5.0 : (priceRange > 5 ? 1.0 : 0.25);
     const startYTick = Math.ceil(minPrice / yTickStep) * yTickStep;
     for (let p = startYTick; p <= maxPrice; p += yTickStep) {
-        bm.fillText(`$${p.toFixed(2)}`, padLeft - 6, getY(p));
+        bm.fillText(`$${p.toFixed(2)}`, w - padRight + 6, getY(p));
     }
     bm.restore();
 
