@@ -251,6 +251,41 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
 const formatCompact = (val) => new Intl.NumberFormat('en-US', { notation: 'compact', compactDisplay: 'short' }).format(val);
 const formatPercent = (val) => `${val.toFixed(2)}%`;
 
+// --- Switch Active Symbol ---
+function switchToSymbol(symbol) {
+    if (!symbol) return;
+    currentSymbol = symbol.toUpperCase().trim();
+    currentExpiration = 'all'; // Reset expiration filter
+    
+    // Update symbol search inputs
+    const symbolInput = document.getElementById('symbol-input');
+    if (symbolInput) {
+        symbolInput.value = currentSymbol;
+    }
+    
+    // Programmatically trigger click on GEX Profile menu tab
+    const profileTabBtn = document.querySelector('.menu-item[data-tab="gex-profile"]');
+    if (profileTabBtn) {
+        profileTabBtn.click();
+    } else {
+        // Fallback tab switching if menu item not found
+        const menuItems = document.querySelectorAll('.menu-item');
+        const tabContents = document.querySelectorAll('.tab-content');
+        menuItems.forEach(btn => {
+            if (btn.getAttribute('data-tab') === 'gex-profile') btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+        tabContents.forEach(content => {
+            if (content.id === 'gex-profile') content.classList.add('active');
+            else content.classList.remove('active');
+        });
+    }
+    
+    // Load ticker data
+    fetchGexData(currentSymbol, currentExpiration);
+}
+window.switchToSymbol = switchToSymbol;
+
 // --- Fetch GEX Profile ---
 async function fetchGexData(symbol, expiration) {
     showLoadingState(true);
@@ -849,7 +884,12 @@ function renderScreenerPage(page) {
         }
         
         // Map elements
-        const sym = `<td class="text-bold"><i class="fa-solid fa-chevron-right expand-icon"></i> ${row.symbol}</td>`;
+        const sym = `<td class="text-bold">
+            <i class="fa-solid fa-chevron-right expand-icon"></i> 
+            <a href="#" onclick="event.preventDefault(); event.stopPropagation(); switchToSymbol('${row.symbol}');" style="color: var(--color-primary); text-decoration: none; border-bottom: 1px dashed rgba(59, 130, 246, 0.4); padding-bottom: 1px;">
+                ${row.symbol}
+            </a>
+        </td>`;
         const price = `<td>${formatCurrency(row.price)}</td>`;
         const flip = `<td>${formatCurrency(row.gamma_flip)}</td>`;
         
@@ -1251,8 +1291,15 @@ function renderWatchlistPills() {
         
         // Setup delete event listener
         pill.querySelector('.close-pill').addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent pill click from firing
             const symToRemove = e.target.getAttribute('data-symbol');
             removeSymbolFromWatchlist(symToRemove);
+        });
+        
+        // Setup click event listener on pill itself to switch symbol
+        pill.addEventListener('click', (e) => {
+            if (e.target.classList.contains('close-pill')) return;
+            switchToSymbol(symbol);
         });
         
         container.appendChild(pill);
@@ -4005,7 +4052,11 @@ async function loadLiquidScannerData() {
             } else {
                 tbody.innerHTML = result.data.map(row => `
                     <tr>
-                        <td><strong>${row.symbol}</strong></td>
+                        <td>
+                            <a href="#" onclick="event.preventDefault(); switchToSymbol('${row.symbol}');" style="color: var(--color-primary); text-decoration: none; font-weight: bold; border-bottom: 1px dashed rgba(59, 130, 246, 0.4); padding-bottom: 1px;">
+                                ${row.symbol}
+                            </a>
+                        </td>
                         <td>$${row.price.toFixed(2)}</td>
                         <td>${(row.avg_volume / 1000000).toFixed(1)}M</td>
                         <td>$${row.gamma_flip.toFixed(1)}</td>
