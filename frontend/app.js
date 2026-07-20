@@ -1581,6 +1581,14 @@ function initOrderFlowCharts() {
     if (ofState.initialized) {
         resizeOrderFlowCanvases();
         checkSchwabStatus();
+        
+        // Resume active stream upon returning to the tab
+        const mode = ofState.feedMode;
+        if (mode === 'schwab' || mode === 'alpaca') {
+            connectLiveWebSocket(mode);
+        } else {
+            startOrderFlowSimulation('live');
+        }
         return;
     }
 
@@ -1615,10 +1623,21 @@ function initOrderFlowCharts() {
     initializeBookmapHeatmap();
 
     ofState.initialized = true;
-    addOrderFlowAlert('system', `Order Flow Suite active. Feed: SIMULATION. Spot pricing loaded.`);
     
-    // Start default simulation walks
-    startOrderFlowSimulation('live');
+    // Read the current selected feed mode from the dropdown on startup
+    const feedModeSelect = document.getElementById('of-feed-mode');
+    const mode = feedModeSelect ? feedModeSelect.value : 'simulation';
+    ofState.feedMode = mode;
+    
+    addOrderFlowAlert('system', `Order Flow Suite active. Feed: ${mode.toUpperCase()}. Spot pricing loaded.`);
+    
+    if (mode === 'schwab' || mode === 'alpaca') {
+        document.getElementById('of-sim-card').style.display = 'none';
+        connectLiveWebSocket(mode);
+    } else {
+        document.getElementById('of-sim-card').style.display = 'block';
+        startOrderFlowSimulation('live');
+    }
 }
 
 function resizeOrderFlowCanvases() {
