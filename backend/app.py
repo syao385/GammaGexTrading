@@ -413,7 +413,7 @@ def get_swing_trading_snapshot():
         logger.error(f"API: swing-trading snapshot failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/strategy/calculate-probability")
+@app.get("/api/strategy/calculate-probability")
 def calculate_trade_probability(symbol: str = Query(...), strategy: str = Query(...), tick: float = Query(0.0), voldRatio: float = Query(1.0)):
     """
     Calculates live probability success score and Kelly sizing.

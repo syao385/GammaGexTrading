@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import yfinance as yf
 
 from backend.data_fetcher import DataFetcher
@@ -164,7 +164,7 @@ class InternalsCalculator:
             call_wall = float(aggregated['call_wall'])
             put_wall = float(aggregated['put_wall'])
             gamma_flip = float(aggregated['gamma_flip'])
-            net_gex = float(aggregated['net_gex'])
+            net_gex = float(aggregated['total_gex_dollar'])
             
             gex_regime = "Positive Gamma" if price >= gamma_flip else "Negative Gamma"
             
