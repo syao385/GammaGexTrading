@@ -121,43 +121,56 @@ class MarketScreener:
                             if (abs(price - put_wall) / price <= 0.015) or (abs(price - flip) / price <= 0.015):
                                 alerts.append("Price Action: Daily Bullish Engulfing near support")
 
+                    # Generate EST timestamp for setups
+                    from datetime import timezone, timedelta
+                    est_tz = timezone(timedelta(hours=-5))
+                    est_time = datetime.now(timezone.utc).astimezone(est_tz)
+                    est_timestamp_str = est_time.strftime("%Y-%m-%d %H:%M:%S")
+                    time_short_str = est_time.strftime("%H:%M:%S EST")
+                    
+                    bias_direction = "Long" if price >= flip else "Short"
+
                     # Run Standard Setup Scans
                     vcp_detected, vcp_summary = self.detect_vcp_pattern(hist)
                     if vcp_detected:
-                        setups_triggered.append("VCP Pattern")
-                        alerts.append(f"VCP: {vcp_summary}")
+                        setups_triggered.append(f"VCP Pattern [Long] @ {time_short_str}")
+                        alerts.append(f"VCP Pattern [Long] @ {time_short_str}: {vcp_summary}")
                         
                     breakout_detected, breakout_desc = self.detect_breakout(hist, call_wall)
                     if breakout_detected:
-                        setups_triggered.append("Breakout")
-                        alerts.append(f"Breakout: {breakout_desc}")
+                        setups_triggered.append(f"Breakout [Long] @ {time_short_str}")
+                        alerts.append(f"Breakout [Long] @ {time_short_str}: {breakout_desc}")
                         
                     unusual_vol_detected, vol_desc = self.detect_unusual_volume(hist, processed)
                     if unusual_vol_detected:
-                        setups_triggered.append("Unusual Volume")
-                        alerts.append(f"Volume: {vol_desc}")
+                        setups_triggered.append(f"Unusual Volume [{bias_direction}] @ {time_short_str}")
+                        alerts.append(f"Volume [{bias_direction}] @ {time_short_str}: {vol_desc}")
                         
                     mean_rev_detected, mean_rev_desc = self.detect_mean_reversion(hist, call_wall, put_wall)
                     if mean_rev_detected:
-                        setups_triggered.append("Mean Reversion")
-                        alerts.append(f"Mean Rev: {mean_rev_desc}")
+                        mr_dir = "Short" if ("call wall" in mean_rev_desc.lower() or ("z-score" in mean_rev_desc.lower() and "-" not in mean_rev_desc)) else "Long"
+                        setups_triggered.append(f"Mean Reversion [{mr_dir}] @ {time_short_str}")
+                        alerts.append(f"Mean Rev [{mr_dir}] @ {time_short_str}: {mean_rev_desc}")
                         
                     trend_cont_detected, trend_desc = self.detect_trend_continuation(hist, flip)
                     if trend_cont_detected:
-                        setups_triggered.append("Trend Continuation")
-                        alerts.append(f"Trend: {trend_desc}")
+                        setups_triggered.append(f"Trend Continuation [{bias_direction}] @ {time_short_str}")
+                        alerts.append(f"Trend [{bias_direction}] @ {time_short_str}: {trend_desc}")
 
                     # Run Smart Money Scans
                     if fvgs:
                         active_fvgs = [f for f in fvgs if f['state'] == "active"]
                         if active_fvgs:
-                            setups_triggered.append("Active FVG Imbalance")
-                            alerts.append(f"FVG: {len(active_fvgs)} active gaps on 5m chart")
+                            fvg_dir = "Long" if active_fvgs[0]['type'] == 'bullish' else "Short"
+                            setups_triggered.append(f"Active FVG Imbalance [{fvg_dir}] @ {time_short_str}")
+                            alerts.append(f"FVG [{fvg_dir}] @ {time_short_str}: {len(active_fvgs)} active gaps on 5m chart")
                     
                     if breakers.get("bullish_breaker") or breakers.get("bearish_breaker"):
-                        setups_triggered.append("Breaker Block")
-                        breaker_type = "Bullish" if breakers.get("bullish_breaker") else "Bearish"
-                        alerts.append(f"Breaker: {breaker_type} structure shift on 5m chart")
+                        breaker_dir = "Long" if breakers.get("bullish_breaker") else "Short"
+                        setups_triggered.append(f"Breaker Block [{breaker_dir}] @ {time_short_str}")
+                        alerts.append(f"Breaker [{breaker_dir}] @ {time_short_str}: {breaker_dir} structure shift on 5m chart")
+
+                    setup_timestamp = est_timestamp_str if len(setups_triggered) > 0 else ""
 
                     # --- COMPUTE 10-POINT PLAYBOOK SCORECARD ---
                     bias_direction = "long" if price >= flip else "short"
@@ -328,6 +341,7 @@ class MarketScreener:
                     'total_cex_dollar': float(aggregated['total_cex_dollar']),
                     'setups': setups_triggered,
                     'alerts': alerts[:5],
+                    'setup_timestamp': setup_timestamp,
                     'volume_profile_poc': float(vp_5d['poc']),
                     'volume_profile_vah': float(vp_5d['vah']),
                     'volume_profile_val': float(vp_5d['val']),

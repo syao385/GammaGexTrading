@@ -4042,7 +4042,7 @@ async function loadLiquidScannerData() {
 function getSetupBadgesHTML(alerts) {
     if (!alerts || alerts.length === 0) return '<span style="color:var(--text-muted);">None</span>';
     
-    // Map full alerts texts to short tags
+    // Map full alerts texts to short tags with direction and timestamp
     return alerts.map(a => {
         let tag = "Setup";
         let c = "badge-vcp";
@@ -4059,13 +4059,36 @@ function getSetupBadgesHTML(alerts) {
         } else if (a.toLowerCase().includes('mean')) {
             tag = "Mean Rev";
             c = "badge-mean-rev";
-        } else if (a.toLowerCase().includes('unusual')) {
+        } else if (a.toLowerCase().includes('volume') || a.toLowerCase().includes('unusual')) {
             tag = "Vol Spike";
             c = "badge-vol-spike";
+        } else if (a.toLowerCase().includes('fvg')) {
+            tag = "FVG";
+            c = "badge-vcp";
+        } else if (a.toLowerCase().includes('breaker')) {
+            tag = "Breaker";
+            c = "badge-breakout";
         } else {
             tag = a.split(':')[0]; // fallback to prefix
         }
-        return `<span class="screener-badge ${c}" title="${a}">${tag}</span>`;
+
+        // Extract direction and timestamp if present in the string
+        let metaHtml = "";
+        const dirMatch = a.match(/\[(Long|Short)\]/i);
+        const timeMatch = a.match(/@\s*([^\s]+)/);
+        if (dirMatch || timeMatch) {
+            const dir = dirMatch ? dirMatch[1] : "";
+            const timeStr = timeMatch ? timeMatch[1] : "";
+            const dirColor = dir.toLowerCase() === 'long' ? '#10b981' : '#f43f5e';
+            metaHtml = `<div style="font-size:9.5px; color:var(--text-secondary); margin-top:3px; font-family:var(--font-secondary);">
+                <span style="color:${dirColor}; font-weight:800; text-transform:uppercase;">${dir}</span> <span style="color:var(--text-muted); font-size:9px;">${timeStr}</span>
+            </div>`;
+        }
+
+        return `<div style="display:inline-block; margin-right:8px; margin-bottom:6px; vertical-align:top; background:rgba(255,255,255,0.01); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding:4px 6px; text-align:center; min-width:80px;">
+            <span class="screener-badge ${c}" title="${a}">${tag}</span>
+            ${metaHtml}
+        </div>`;
     }).join('');
 }
 

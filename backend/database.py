@@ -61,6 +61,7 @@ def init_db():
         asset_grade TEXT,
         asset_confluence_score REAL,
         asset_sizing_recommendation TEXT,
+        setup_timestamp TEXT,
         FOREIGN KEY(symbol) REFERENCES symbols(symbol) ON DELETE CASCADE
     )
     """)
@@ -78,7 +79,8 @@ def init_db():
         ("volume_profile_val_60d", "REAL"),
         ("asset_grade", "TEXT"),
         ("asset_confluence_score", "REAL"),
-        ("asset_sizing_recommendation", "TEXT")
+        ("asset_sizing_recommendation", "TEXT"),
+        ("setup_timestamp", "TEXT")
     ]
     for col_name, col_type in new_cols:
         try:
@@ -128,9 +130,9 @@ def save_symbol_metrics(symbol: str, metrics: dict):
             volume_profile_poc, volume_profile_vah, volume_profile_val,
             volume_profile_poc_25d, volume_profile_vah_25d, volume_profile_val_25d,
             volume_profile_poc_60d, volume_profile_vah_60d, volume_profile_val_60d,
-            asset_grade, asset_confluence_score, asset_sizing_recommendation
+            asset_grade, asset_confluence_score, asset_sizing_recommendation, setup_timestamp
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             symbol,
             metrics.get('vcp_status'),
@@ -149,7 +151,8 @@ def save_symbol_metrics(symbol: str, metrics: dict):
             metrics.get('volume_profile_val_60d'),
             metrics.get('asset_grade'),
             metrics.get('asset_confluence_score'),
-            metrics.get('asset_sizing_recommendation')
+            metrics.get('asset_sizing_recommendation'),
+            metrics.get('setup_timestamp')
         ))
         
         conn.commit()
@@ -174,7 +177,7 @@ def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, lim
            t.volume_profile_poc, t.volume_profile_vah, t.volume_profile_val,
            t.volume_profile_poc_25d, t.volume_profile_vah_25d, t.volume_profile_val_25d,
            t.volume_profile_poc_60d, t.volume_profile_vah_60d, t.volume_profile_val_60d,
-           t.asset_grade, t.asset_confluence_score, t.asset_sizing_recommendation
+           t.asset_grade, t.asset_confluence_score, t.asset_sizing_recommendation, t.setup_timestamp
     FROM symbols s
     LEFT JOIN gex_data g ON s.symbol = g.symbol
     LEFT JOIN technical_setups t ON s.symbol = t.symbol
@@ -222,6 +225,12 @@ def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, lim
             
             results.append(data)
             
+        # Stable sort: sort by setup_timestamp DESC (newest first)
+        results.sort(key=lambda x: x.get('setup_timestamp') or '', reverse=True)
+        # Then sort by Asset Grade ASC (A -> B -> C -> D)
+        grade_order = {'A': 1, 'B': 2, 'C': 3, 'D': 4}
+        results.sort(key=lambda x: grade_order.get((x.get('asset_grade') or 'D').upper(), 4))
+        
         paginated_results = results[offset:offset+limit]
         return {
             'total': len(results),
