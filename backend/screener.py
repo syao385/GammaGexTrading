@@ -122,7 +122,7 @@ class MarketScreener:
                                 alerts.append("Price Action: Daily Bullish Engulfing near support")
 
                     # Generate EST timestamp for setups
-                    from datetime import timezone, timedelta
+                    from datetime import datetime, timezone, timedelta
                     est_tz = timezone(timedelta(hours=-5))
                     est_time = datetime.now(timezone.utc).astimezone(est_tz)
                     est_timestamp_str = est_time.strftime("%Y-%m-%d %H:%M:%S")
