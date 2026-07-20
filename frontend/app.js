@@ -2455,8 +2455,27 @@ function connectLiveWebSocket(provider) {
         
         // Handle error responses from proxy (e.g. auth expired)
         if (payload.error) {
-            addOrderFlowAlert('warning', payload.error);
+            addOrderFlowAlert('warning', `${payload.error} Falling back to Simulation mode...`);
             updateStreamStatus('disconnected');
+            
+            if (ofState.liveSocket) {
+                ofState.liveSocket.close();
+                ofState.liveSocket = null;
+            }
+            
+            // Graceful auto-fallback to simulation after 3 seconds
+            setTimeout(() => {
+                // Only fall back if the user hasn't manually switched to something else
+                if (ofState.feedMode === activeProvider) {
+                    const modeSelect = document.getElementById('of-feed-mode');
+                    if (modeSelect) {
+                        modeSelect.value = 'simulation';
+                        ofState.feedMode = 'simulation';
+                    }
+                    document.getElementById('of-sim-card').style.display = 'block';
+                    startOrderFlowSimulation('live');
+                }
+            }, 3000);
             return;
         }
 
