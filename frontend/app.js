@@ -1576,6 +1576,32 @@ let bmCtx = null;
 let cdCanvas = null;
 let cdCtx = null;
 
+// Add a log alert item to the order flow executions alerts panel
+function addOrderFlowAlert(type, msg) {
+    const container = document.getElementById('orderflow-alerts-container');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = `alert-item ${type}-alert`;
+    
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'alert-time';
+    timeSpan.textContent = new Date().toLocaleTimeString();
+    
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'alert-msg';
+    msgSpan.textContent = msg;
+    
+    div.appendChild(timeSpan);
+    div.appendChild(msgSpan);
+    
+    container.insertBefore(div, container.firstChild);
+    
+    while (container.children.length > 40) {
+        container.removeChild(container.lastChild);
+    }
+}
+
 // Initialize Order Flow Panel
 function initOrderFlowCharts() {
     if (ofState.initialized) {
