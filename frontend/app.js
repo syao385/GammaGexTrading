@@ -2724,7 +2724,7 @@ function drawFootprint() {
     ctx.clearRect(0, 0, w, h);
 
     const padLeft = 60 * window.devicePixelRatio;
-    const padRight = 20 * window.devicePixelRatio;
+    const padRight = 65 * window.devicePixelRatio;
     const padTop = 30 * window.devicePixelRatio;
     const padBot = 40 * window.devicePixelRatio;
     
@@ -3068,8 +3068,8 @@ function drawBookmap() {
     bm.clearRect(0, 0, w, h);
     cd.clearRect(0, 0, cdW, cdH);
 
-    const padLeft = 60 * window.devicePixelRatio;
-    const padRight = 15 * window.devicePixelRatio;
+    const padLeft = 20 * window.devicePixelRatio;
+    const padRight = 65 * window.devicePixelRatio;
     const padTop = 15 * window.devicePixelRatio;
     const padBot = 30 * window.devicePixelRatio; // Increased to leave room for X-axis labels
     
