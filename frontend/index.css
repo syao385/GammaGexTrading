@@ -1011,6 +1011,59 @@ tr:hover td {
     line-height: 1.5;
 }
 
+.play-timestamp {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.play-reason-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-left: 3px solid #3b82f6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #e2e8f0;
+    line-height: 1.4;
+}
+
+.play-price-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.price-target-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.target-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.target-val {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.target-val.entry-val { color: #f59e0b; }
+.target-val.profit-val { color: #10b981; }
+.target-val.stop-val { color: #f43f5e; }
+.target-val.dte-val { color: #06b6d4; }
+
 .play-rules strong {
     color: var(--text-secondary);
 }

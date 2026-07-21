@@ -1038,28 +1038,74 @@
 
                     <!-- Right Column: DOM Ladder & Visual Charts -->
                     <div class="order-flow-charts-container">
-                        <!-- Unified Confluence Playbook Assistant -->
-                        <div id="confluence-playbook-card" class="card playbook-card" style="margin-bottom: 12px; padding: 12px 16px; background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div style="background: rgba(59, 130, 246, 0.15); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(59, 130, 246, 0.25);">
-                                        <i class="fa-solid fa-brain" style="color: #3b82f6; font-size: 20px;"></i>
+                        <!-- Unified ASSET Playbook Scorecard (Order Flow Tab) -->
+                        <div id="orderflow-asset-scorecard-card" class="card full-width-card" style="margin-bottom: 16px;">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-ranking-star"></i> ASSET Playbook Scorecard & Sizing</h3>
+                                <span class="card-subtitle">10-Point Quantitative Playbook Setup Sizing & Order Flow Confluence</span>
+                            </div>
+                            <div class="card-body asset-scorecard-layout">
+                                <!-- Left: Circular Grade Indicator -->
+                                <div class="asset-grade-panel">
+                                    <div class="asset-grade-circle" id="of-asset-grade-badge">D</div>
+                                    <div class="asset-score-label">Score: <strong id="of-asset-score-num">0.0</strong> / 10.0</div>
+                                    <div class="asset-sizing-badge" id="of-asset-sizing-badge">SKIP (0%)</div>
+                                </div>
+                                
+                                <!-- Middle: Confluence Progress Bars -->
+                                <div class="asset-categories-panel">
+                                    <div class="category-row">
+                                        <span class="category-label">1. Catalyst & RVOL</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-cat" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-cat">0.0/2.0</span>
                                     </div>
-                                    <div>
-                                        <h4 style="margin: 0; color: #ffffff; font-size: 14px; font-weight: 600;">CONFLUENCE PLAYBOOK ASSISTANT</h4>
-                                        <div id="playbook-setup-regime" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Evaluating current spot and options walls...</div>
+                                    <div class="category-row">
+                                        <span class="category-label">2. Index & HTF Alignment</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-align" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-align">0.0/2.0</span>
+                                    </div>
+                                    <div class="category-row">
+                                        <span class="category-label">3. Relative Strength (RS/RW)</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-rs" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-rs">0.0/2.0</span>
+                                    </div>
+                                    <div class="category-row">
+                                        <span class="category-label">4. Location / Zone</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-loc" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-loc">0.0/2.0</span>
+                                    </div>
+                                    <div class="category-row">
+                                        <span class="category-label">5. Tactical Trigger & Order Flow</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-trig" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-trig">0.0/1.0</span>
+                                    </div>
+                                    <div class="category-row">
+                                        <span class="category-label">6. Risk/Reward Skew</span>
+                                        <div class="category-bar"><div class="category-fill" id="of-fill-rr" style="width: 0%;"></div></div>
+                                        <span class="category-points" id="of-pts-rr">0.0/1.0</span>
                                     </div>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; max-width: 450px; margin-left: 20px;">
-                                    <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Confluence:</span>
-                                    <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; position: relative;">
-                                        <div id="playbook-strength-bar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.6s ease; border-radius: 3px;"></div>
+                                
+                                <!-- Right: Actionable Recommendations -->
+                                <div class="asset-recommendation-panel">
+                                    <h4 id="of-asset-rec-header">Inactive Setup</h4>
+                                    <p id="of-asset-rec-desc">Select a symbol and connect stream to evaluate order flow confluences against GEX walls.</p>
+                                    <div class="asset-targets">
+                                        <div class="target-item">Stop-loss Invalidation: <strong id="of-asset-stop-level">--</strong></div>
+                                        <div class="target-item">Take-profit Target: <strong id="of-asset-target-level">--</strong></div>
                                     </div>
-                                    <span id="playbook-strength-text" style="font-size: 11px; font-weight: 700; color: #3b82f6; min-width: 32px; text-align: right;">0%</span>
                                 </div>
-                                <div id="playbook-action-box" style="padding: 6px 12px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); font-size: 12px; font-weight: 700; color: #ffffff; min-width: 250px; text-align: center;">
-                                    WAITING FOR MARKET FEEDS
-                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Option Execution Playbook (Order Flow Tab) -->
+                        <div id="orderflow-strategy-playbook-card" class="card full-width-card" style="margin-bottom: 16px;">
+                            <div class="card-header">
+                                <h3><i class="fa-solid fa-compass-drafting"></i> Active Option Execution Playbook</h3>
+                                <span class="card-subtitle">Algorithmic option strategy blueprints with exact strike structures, entry pricing, profit targets, and stop losses</span>
+                            </div>
+                            <div id="orderflow-playbook-container" class="playbook-grid">
+                                <!-- Injected dynamically -->
                             </div>
                         </div>
 

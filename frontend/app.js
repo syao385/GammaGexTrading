@@ -446,23 +446,24 @@ function updateStatsBanner(data) {
     }
 }
 
-function updateAssetScorecard(data) {
-    const gradeBadge = document.getElementById('asset-grade-badge');
-    const scoreNum = document.getElementById('asset-score-num');
-    const sizingBadge = document.getElementById('asset-sizing-badge');
-    const recHeader = document.getElementById('asset-rec-header');
-    const recDesc = document.getElementById('asset-rec-desc');
-    const stopLevel = document.getElementById('asset-stop-level');
-    const targetLevel = document.getElementById('asset-target-level');
+function updateSingleAssetScorecard(prefix, data) {
+    const pfx = prefix ? `${prefix}-` : '';
+    const gradeBadge = document.getElementById(`${pfx}asset-grade-badge`);
+    const scoreNum = document.getElementById(`${pfx}asset-score-num`);
+    const sizingBadge = document.getElementById(`${pfx}asset-sizing-badge`);
+    const recHeader = document.getElementById(`${pfx}asset-rec-header`);
+    const recDesc = document.getElementById(`${pfx}asset-rec-desc`);
+    const stopLevel = document.getElementById(`${pfx}asset-stop-level`);
+    const targetLevel = document.getElementById(`${pfx}asset-target-level`);
     
     if (!gradeBadge) return;
     
     if (!data.asset_grade) {
         gradeBadge.textContent = 'D';
-        gradeBadge.className = 'asset-grade-badge grade-d';
+        gradeBadge.className = 'asset-grade-circle grade-d';
         scoreNum.textContent = '0.0';
         sizingBadge.textContent = 'SKIP (0%)';
-        sizingBadge.className = 'asset-sizing-badge sizing-skip';
+        sizingBadge.className = 'asset-sizing-badge sizing-d';
         recHeader.textContent = 'Inactive Setup';
         recDesc.textContent = 'No active trade configurations found.';
         stopLevel.textContent = '--';
@@ -481,8 +482,8 @@ function updateAssetScorecard(data) {
     const bd = data.scorecard_breakdown || {};
     
     const setBar = (fillId, ptsId, val, maxVal) => {
-        const fillEl = document.getElementById(fillId);
-        const ptsEl = document.getElementById(ptsId);
+        const fillEl = document.getElementById(`${pfx}${fillId}`);
+        const ptsEl = document.getElementById(`${pfx}${ptsId}`);
         if (fillEl && ptsEl) {
             const pct = (val / maxVal) * 100;
             fillEl.style.width = `${pct}%`;
@@ -513,13 +514,18 @@ function updateAssetScorecard(data) {
         
         // Populate stops and targets based on walls and flip
         if (data.current_price >= data.gamma_flip) {
-            stopLevel.textContent = formatCurrency(Math.max(data.put_wall, data.gamma_flip, data.volume_profile_val));
-            targetLevel.textContent = formatCurrency(data.call_wall);
+            stopLevel.textContent = formatCurrency(Math.max(data.put_wall || 0, data.gamma_flip || 0, data.volume_profile_val || 0));
+            targetLevel.textContent = formatCurrency(data.call_wall || 0);
         } else {
-            stopLevel.textContent = formatCurrency(Math.min(data.call_wall, data.gamma_flip, data.volume_profile_vah));
-            targetLevel.textContent = formatCurrency(data.put_wall);
+            stopLevel.textContent = formatCurrency(Math.min(data.call_wall || 0, data.gamma_flip || 0, data.volume_profile_vah || 0));
+            targetLevel.textContent = formatCurrency(data.put_wall || 0);
         }
     }
+}
+
+function updateAssetScorecard(data) {
+    updateSingleAssetScorecard('', data);
+    updateSingleAssetScorecard('of', data);
 }
 
 function updateStrikesTable(strikes) {
@@ -1358,184 +1364,305 @@ function removeSymbolFromWatchlist(symbol) {
     runScreener();
 }
 
-// --- Dynamic Option Strategy Playbook Helper ---
+// --- Expanded 1-to-1 Option Strategy Playbook Helper ---
 function updateStrategyPlaybook(data) {
-    const container = document.getElementById('playbook-container');
-    container.innerHTML = '';
+    const gexContainer = document.getElementById('playbook-container');
+    const ofContainer = document.getElementById('orderflow-playbook-container');
+    
+    if (!data || !data.current_price) return;
     
     const spot = data.current_price;
-    const flip = data.gamma_flip;
-    const callWall = data.call_wall;
-    const putWall = data.put_wall;
+    const flip = data.gamma_flip || spot;
+    const callWall = data.call_wall || (spot * 1.05);
+    const putWall = data.put_wall || (spot * 0.95);
+    const maxGamma = data.max_gex_strike || callWall;
     
-    // Calculate 1% strike width rounded to nearest 5 (min 5) for spreads
-    const strikeWidth = Math.round(spot * 0.01 / 5) * 5 || 5;
     const isPositiveGamma = spot >= flip;
+    const strikeWidth = Math.max(5, Math.round(spot * 0.01 / 5) * 5) || 5;
+    const atmStrike = Math.round(spot / (spot > 200 ? 5 : 1)) * (spot > 200 ? 5 : 1);
     
-    // Proximity thresholds (0.8% of spot price)
-    const threshold = spot * 0.008;
-    const distFlip = Math.abs(spot - flip);
+    const timestampStr = data.setup_timestamp || (new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' EST');
+    const grade = data.asset_grade || 'B';
+    const sizingStr = data.asset_sizing_recommendation ? (data.asset_sizing_recommendation.split(': ')[1] || data.asset_sizing_recommendation) : 'STANDARD (5.0%)';
     
+    const dte7 = new Date(Date.now() + 7 * 86400000).toLocaleDateString([], { month: 'short', day: '2-digit' });
+    const dte15 = new Date(Date.now() + 15 * 86400000).toLocaleDateString([], { month: 'short', day: '2-digit' });
+    const dte30 = new Date(Date.now() + 30 * 86400000).toLocaleDateString([], { month: 'short', day: '2-digit' });
+
+    const threshold = spot * 0.012; // 1.2% proximity
     let html = '';
-    let triggeredCount = 0;
-    
-    if (isPositiveGamma) {
-        // --- POSITIVE GAMMA (Mean-Reversion & Premium Decay) ---
-        
-        // 1. Put Wall Credit Spread (Trigger: spot is close to put wall)
-        if (spot >= putWall && (spot - putWall) <= threshold) {
-            triggeredCount++;
-            html += `
-                <div class="play-card bullish-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-circle-chevron-up" style="color: var(--color-green);"></i> Put Wall Bounce (Triggered)</span>
-                        <span class="play-tag bullish">Bullish</span>
-                    </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy Put:</span><span class="setup-val">$${(putWall - strikeWidth).toFixed(1)}</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val" style="color: var(--color-green); font-weight: 700;">$${putWall.toFixed(1)} (Put Wall)</span></div>
-                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${((spot - putWall)/spot*100).toFixed(2)}% above wall</span></div>
-                    </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot price is near the Put Wall ($${putWall.toFixed(1)}). Dealer short put hedging acts as firm support.<br><br>
-                        <strong>Execution:</strong> Sell Put Spread. Close at 75% max credit. Stop loss immediately if spot closes below the Put Wall.
+    let count = 0;
+
+    const buildPlayCard = (playType, title, iconHtml, tagText, reason, dteText, strikeStruct, entryText, profitText, stopText, rules) => {
+        count++;
+        return `
+            <div class="play-card ${playType}-play">
+                <div class="play-header">
+                    <span class="play-title">${iconHtml} ${title}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="play-timestamp">${timestampStr}</span>
+                        <span class="play-tag ${playType}">${tagText}</span>
                     </div>
                 </div>
-            `;
-        }
-        
-        // 2. Call Wall Credit Spread (Trigger: spot is close to call wall)
-        if (spot <= callWall && (callWall - spot) <= threshold) {
-            triggeredCount++;
-            html += `
-                <div class="play-card bearish-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-circle-chevron-down" style="color: var(--color-red);"></i> Call Wall Reversal (Triggered)</span>
-                        <span class="play-tag bearish">Bearish</span>
+                <div class="play-reason-box">
+                    <strong>Technical Reason:</strong> ${reason}
+                </div>
+                <div class="play-price-grid">
+                    <div class="price-target-item">
+                        <span class="target-title">Expiration & DTE</span>
+                        <span class="target-val dte-val">${dteText}</span>
                     </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val" style="color: var(--color-red); font-weight: 700;">$${callWall.toFixed(1)} (Call Wall)</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy Call:</span><span class="setup-val">$${(callWall + strikeWidth).toFixed(1)}</span></div>
-                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${((callWall - spot)/spot*100).toFixed(2)}% below wall</span></div>
+                    <div class="price-target-item">
+                        <span class="target-title">Strike Structure</span>
+                        <span class="target-val">${strikeStruct}</span>
                     </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot price is testing the Call Wall ($${callWall.toFixed(1)}). Dealer long call hedging caps upside breakout potential.<br><br>
-                        <strong>Execution:</strong> Sell Call Spread. Close at 75% max credit. Stop loss if spot closes above the Call Wall.
+                    <div class="price-target-item">
+                        <span class="target-title">Est. Entry Price</span>
+                        <span class="target-val entry-val">${entryText}</span>
+                    </div>
+                    <div class="price-target-item">
+                        <span class="target-title">Take Profit Target</span>
+                        <span class="target-val profit-val">${profitText}</span>
+                    </div>
+                    <div class="price-target-item">
+                        <span class="target-title">Stop Loss Price</span>
+                        <span class="target-val stop-val">${stopText}</span>
+                    </div>
+                    <div class="price-target-item">
+                        <span class="target-title">ASSET Sizing</span>
+                        <span class="target-val">${grade} (${sizingStr})</span>
                     </div>
                 </div>
-            `;
-        }
-        
-        // 3. Iron Condor (Trigger: spot is safely inside the channel and not near either wall)
-        if (spot > (putWall + threshold) && spot < (callWall - threshold)) {
-            triggeredCount++;
-            html += `
-                <div class="play-card neutral-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-arrows-left-right" style="color: var(--color-accent);"></i> Range-Bound Channel (Triggered)</span>
-                        <span class="play-tag neutral">Neutral</span>
-                    </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">30 - 45 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Put (Floor):</span><span class="setup-val">$${putWall.toFixed(1)} (Put Wall)</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Call (Cap):</span><span class="setup-val">$${callWall.toFixed(1)} (Call Wall)</span></div>
-                        <div class="setup-row"><span class="setup-label">Channel Width:</span><span class="setup-val">${((callWall - putWall)/spot*100).toFixed(1)}% of Spot</span></div>
-                    </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot price is well inside the channel and positive GEX suppresses volatility. High probability range-bound consolidation.<br><br>
-                        <strong>Execution:</strong> Open Iron Condor. Close at 50% max profit. Stop loss if either wall is breached on a daily closing basis.
-                    </div>
-                </div>
-            `;
-        }
-    } else {
-        // --- NEGATIVE GAMMA (Volatility Expansion & Breakouts) ---
-        
-        const atmStrike = Math.round(spot);
-        
-        // 1. Bull Call / Bear Put Debit Spreads (Trigger: spot is testing the GEX Flip Level)
-        if (distFlip <= threshold) {
-            triggeredCount++;
-            html += `
-                <div class="play-card bullish-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-bolt" style="color: var(--color-green);"></i> Flip Level Squeeze (Triggered)</span>
-                        <span class="play-tag bullish">Bullish</span>
-                    </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy Call (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Call:</span><span class="setup-val">$${(atmStrike + strikeWidth)}</span></div>
-                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${(distFlip/spot*100).toFixed(2)}% from Flip</span></div>
-                    </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot is testing the GEX Flip level ($${flip.toFixed(1)}). A break back into Positive Gamma will force dealer short-covering.<br><br>
-                        <strong>Execution:</strong> Buy Call Spread. Target 100% gain on debit. Close if spot reverses below the Flip level.
-                    </div>
-                </div>
-            `;
-            
-            triggeredCount++;
-            html += `
-                <div class="play-card bearish-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-arrows-down-to-line" style="color: var(--color-red);"></i> Flip Level Breakdown (Triggered)</span>
-                        <span class="play-tag bearish">Bearish</span>
-                    </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">7 - 15 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy Put (ATM):</span><span class="setup-val">$${atmStrike}</span></div>
-                        <div class="setup-row"><span class="setup-label">Sell Put:</span><span class="setup-val">$${(atmStrike - strikeWidth)}</span></div>
-                        <div class="setup-row"><span class="setup-label">Proximity:</span><span class="setup-val">${(distFlip/spot*100).toFixed(2)}% from Flip</span></div>
-                    </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot is testing the GEX Flip level ($${flip.toFixed(1)}). A failure here triggers dealer selling to hedge short put exposures.<br><br>
-                        <strong>Execution:</strong> Buy Put Spread. Target 100% gain on debit. Stop loss if spot rises back above the Flip level.
-                    </div>
-                </div>
-            `;
-        } else {
-            // Volatility is expanding, but spot is far from the flip level
-            triggeredCount++;
-            html += `
-                <div class="play-card neutral-play">
-                    <div class="play-header">
-                        <span class="play-title"><i class="fa-solid fa-tornado" style="color: var(--color-accent);"></i> Volatility Expansion</span>
-                        <span class="play-tag neutral">Vol Buy</span>
-                    </div>
-                    <div class="play-setup">
-                        <div class="setup-row"><span class="setup-label">Option DTE:</span><span class="setup-val">15 - 30 DTE</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy ATM Call:</span><span class="setup-val">$${atmStrike}</span></div>
-                        <div class="setup-row"><span class="setup-label">Buy ATM Put:</span><span class="setup-val">$${atmStrike}</span></div>
-                        <div class="setup-row"><span class="setup-label">Target Exit:</span><span class="setup-val">35% Net Gain</span></div>
-                    </div>
-                    <div class="play-rules">
-                        <strong>Trigger Rule:</strong> Spot is in deep Negative Gamma and far from the Flip level. High realized volatility swings are expected.<br><br>
-                        <strong>Execution:</strong> Buy Long Straddle. Hold through major macro events. Close on volatility spike.
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    if (triggeredCount === 0 || html === '') {
-        container.innerHTML = `
-            <div class="play-card neutral-play" style="grid-column: 1 / -1; text-align: center; padding: 30px;">
-                <div class="play-title" style="font-size: 18px; margin-bottom: 8px;">
-                    <i class="fa-solid fa-circle-nodes" style="color: var(--color-accent); font-size: 24px; margin-bottom: 12px;"></i><br>
-                    No Active Proximity Setups Triggered
-                </div>
-                <div class="play-rules" style="border: none; padding: 0;">
-                    The underlying price ($${spot.toFixed(2)}) is currently in a neutral zone.<br>
-                    Monitor proximity to the **Put Wall ($${putWall.toFixed(1)})** or **Call Wall ($${callWall.toFixed(1)})** for active credit spread setups, or the **Flip Level ($${flip.toFixed(1)})** for debit breakouts.
+                <div class="play-rules">
+                    <strong>Execution & Invalidation:</strong> ${rules}
                 </div>
             </div>
         `;
-    } else {
-        container.innerHTML = html;
+    };
+
+    // 1. Put Wall Support Bounce
+    if (spot >= putWall && (spot - putWall) <= threshold) {
+        const estCredit = (strikeWidth * 0.25).toFixed(2);
+        const tpVal = (strikeWidth * 0.25 * 0.25).toFixed(2);
+        const stopVal = (strikeWidth * 0.25 * 2.0).toFixed(2);
+        html += buildPlayCard(
+            'bullish',
+            'Put Wall Support Bounce',
+            '<i class="fa-solid fa-circle-chevron-up" style="color: var(--color-green);"></i>',
+            'Bullish',
+            `Spot price ($${spot.toFixed(2)}) is testing Put Wall ($${putWall.toFixed(1)}). Dealer short-put hedging provides firm structural floor.`,
+            `15 - 30 DTE (${dte15})`,
+            `Sell $${putWall.toFixed(0)} Put / Buy $${(putWall - strikeWidth).toFixed(0)} Put`,
+            `Est. Credit: $${estCredit}`,
+            `Exit @ $${tpVal} (75% Max Profit)`,
+            `Stop @ $${stopVal} (2x Credit Loss)`,
+            `Sell Bull Put Credit Spread. Hard stop loss if spot closes below Put Wall ($${putWall.toFixed(1)}). Target 75% max credit decay.`
+        );
     }
+
+    // 2. Call Wall Resistance Reversal
+    if (spot <= callWall && (callWall - spot) <= threshold) {
+        const estCredit = (strikeWidth * 0.25).toFixed(2);
+        const tpVal = (strikeWidth * 0.25 * 0.25).toFixed(2);
+        const stopVal = (strikeWidth * 0.25 * 2.0).toFixed(2);
+        html += buildPlayCard(
+            'bearish',
+            'Call Wall Resistance Reversal',
+            '<i class="fa-solid fa-circle-chevron-down" style="color: var(--color-red);"></i>',
+            'Bearish',
+            `Spot price ($${spot.toFixed(2)}) is testing Call Wall ($${callWall.toFixed(1)}). Dealer long-call hedging caps upside breakout momentum.`,
+            `15 - 30 DTE (${dte15})`,
+            `Sell $${callWall.toFixed(0)} Call / Buy $${(callWall + strikeWidth).toFixed(0)} Call`,
+            `Est. Credit: $${estCredit}`,
+            `Exit @ $${tpVal} (75% Max Profit)`,
+            `Stop @ $${stopVal} (2x Credit Loss)`,
+            `Sell Bear Call Credit Spread. Hard stop loss if spot closes above Call Wall ($${callWall.toFixed(1)}). Target 75% max credit decay.`
+        );
+    }
+
+    // 3. GEX Flip Squeeze
+    if (Math.abs(spot - flip) <= threshold && isPositiveGamma) {
+        const estDebit = (strikeWidth * 0.40).toFixed(2);
+        const tpVal = (strikeWidth * 0.40 * 2.0).toFixed(2);
+        const stopVal = (strikeWidth * 0.40 * 0.50).toFixed(2);
+        html += buildPlayCard(
+            'bullish',
+            'GEX Flip Level Squeeze',
+            '<i class="fa-solid fa-bolt" style="color: var(--color-green);"></i>',
+            'Bullish',
+            `Spot price ($${spot.toFixed(2)}) crossing above GEX Flip ($${flip.toFixed(1)}). Shift into Positive Gamma forces dealer short-covering.`,
+            `7 - 15 DTE (${dte7})`,
+            `Buy $${atmStrike} Call / Sell $${atmStrike + strikeWidth} Call`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+100% Gain)`,
+            `Stop Sale: $${stopVal} (-50% Loss)`,
+            `Buy Call Debit Spread. Target 100% gain on debit. Hard stop loss if spot drops back below Flip level ($${flip.toFixed(1)}).`
+        );
+    }
+
+    // 4. GEX Flip Breakdown
+    if (Math.abs(spot - flip) <= threshold && !isPositiveGamma) {
+        const estDebit = (strikeWidth * 0.40).toFixed(2);
+        const tpVal = (strikeWidth * 0.40 * 2.0).toFixed(2);
+        const stopVal = (strikeWidth * 0.40 * 0.50).toFixed(2);
+        html += buildPlayCard(
+            'bearish',
+            'GEX Flip Level Breakdown',
+            '<i class="fa-solid fa-arrows-down-to-line" style="color: var(--color-red);"></i>',
+            'Bearish',
+            `Spot price ($${spot.toFixed(2)}) breaking below GEX Flip ($${flip.toFixed(1)}). Negative Gamma regime accelerates selling pressure.`,
+            `7 - 15 DTE (${dte7})`,
+            `Buy $${atmStrike} Put / Sell $${atmStrike - strikeWidth} Put`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+100% Gain)`,
+            `Stop Sale: $${stopVal} (-50% Loss)`,
+            `Buy Put Debit Spread. Target 100% gain on debit. Hard stop loss if spot reclaims Flip level ($${flip.toFixed(1)}).`
+        );
+    }
+
+    // 5. Volatility Contraction Pattern (VCP)
+    const setupsList = data.setups || [];
+    if (setupsList.some(s => s.toLowerCase().includes('vcp'))) {
+        const estDebit = (strikeWidth * 0.35).toFixed(2);
+        const tpVal = (strikeWidth * 0.35 * 1.60).toFixed(2);
+        const stopVal = (strikeWidth * 0.35 * 0.70).toFixed(2);
+        html += buildPlayCard(
+            'bullish',
+            'VCP Pattern Volatility Coiling',
+            '<i class="fa-solid fa-compress" style="color: var(--color-green);"></i>',
+            'Bullish',
+            `Volatility Contraction Pattern (VCP) detected. Tightening range indicates impending directional expansion.`,
+            `30 - 45 DTE (${dte30})`,
+            `Buy $${atmStrike} Call / Sell $${atmStrike + strikeWidth} Call`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+60% Gain)`,
+            `Stop Sale: $${stopVal} (-30% Loss)`,
+            `Open Bullish Diagonal/Call Spread. Hold for volatility expansion. Invalidate if consolidation support is breached.`
+        );
+    }
+
+    // 6. Active FVG Imbalance Fill
+    if (setupsList.some(s => s.toLowerCase().includes('fvg'))) {
+        const isBull = data.current_price >= flip;
+        const estDebit = (strikeWidth * 0.45).toFixed(2);
+        const tpVal = (strikeWidth * 0.45 * 1.80).toFixed(2);
+        const stopVal = (strikeWidth * 0.45 * 0.60).toFixed(2);
+        html += buildPlayCard(
+            isBull ? 'bullish' : 'bearish',
+            'Fair Value Gap (FVG) Fill',
+            '<i class="fa-solid fa-layer-group" style="color: var(--color-blue);"></i>',
+            isBull ? 'Bullish' : 'Bearish',
+            `Active Fair Value Gap imbalance on 5m chart. Price magnetizing towards institutional liquidity re-balance.`,
+            `7 - 14 DTE (${dte7})`,
+            isBull ? `Buy $${atmStrike} Call / Sell $${atmStrike + strikeWidth} Call` : `Buy $${atmStrike} Put / Sell $${atmStrike - strikeWidth} Put`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+80% Gain)`,
+            `Stop Sale: $${stopVal} (-40% Loss)`,
+            `Buy Directional Debit Spread targeting full FVG gap closure. Exit on complete gap fill or invalidation.`
+        );
+    }
+
+    // 7. Breaker Block Structure Shift
+    if (setupsList.some(s => s.toLowerCase().includes('breaker'))) {
+        const isBull = data.current_price >= flip;
+        const estDebit = (strikeWidth * 0.30).toFixed(2);
+        const tpVal = (strikeWidth * 0.30 * 2.20).toFixed(2);
+        const stopVal = (strikeWidth * 0.30 * 0.50).toFixed(2);
+        html += buildPlayCard(
+            isBull ? 'bullish' : 'bearish',
+            'Breaker Block Structure Shift',
+            '<i class="fa-solid fa-shield-halved" style="color: var(--color-accent);"></i>',
+            isBull ? 'Bullish' : 'Bearish',
+            `Breaker Block structure shift confirmed. Liquidity sweep followed by Market Structure Shift (MSS).`,
+            `7 - 14 DTE (${dte7})`,
+            isBull ? `Buy $${atmStrike} Call / Sell $${atmStrike + strikeWidth} Call` : `Buy $${atmStrike} Put / Sell $${atmStrike - strikeWidth} Put`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+120% Gain)`,
+            `Stop Sale: $${stopVal} (-50% Loss)`,
+            `Open High-Gamma Debit Spread. Stop loss if price trades beyond the Breaker Block origin level.`
+        );
+    }
+
+    // 8. Unusual Volume Momentum Surge
+    if (setupsList.some(s => s.toLowerCase().includes('volume'))) {
+        const isBull = data.current_price >= flip;
+        const estPrem = (spot * 0.015).toFixed(2);
+        const tpVal = (spot * 0.015 * 2.0).toFixed(2);
+        const stopVal = (spot * 0.015 * 0.60).toFixed(2);
+        html += buildPlayCard(
+            isBull ? 'bullish' : 'bearish',
+            'Unusual Volume Momentum Surge',
+            '<i class="fa-solid fa-chart-line-up" style="color: var(--color-green);"></i>',
+            isBull ? 'Bullish' : 'Bearish',
+            `Relative Volume (RVOL) > 2.0x 20d MA. Aggressive institutional buying flow detected.`,
+            `7 - 14 DTE (${dte7})`,
+            isBull ? `Buy Single ATM Call ($${atmStrike})` : `Buy Single ATM Put ($${atmStrike})`,
+            `Est. Premium: $${estPrem}`,
+            `Target Sale: $${tpVal} (+100% Gain)`,
+            `Stop Sale: $${stopVal} (-40% Loss)`,
+            `Buy Single-Leg ATM Contract to capture high-delta momentum surge. Stop out on intraday volume exhaustion.`
+        );
+    }
+
+    // 9. Range-Bound Channel (Iron Condor)
+    if (isPositiveGamma && spot > (putWall + threshold) && spot < (callWall - threshold)) {
+        const estCredit = (strikeWidth * 0.33).toFixed(2);
+        const tpVal = (strikeWidth * 0.33 * 0.50).toFixed(2);
+        html += buildPlayCard(
+            'neutral',
+            'Positive GEX Range Channel',
+            '<i class="fa-solid fa-arrows-left-right" style="color: var(--color-accent);"></i>',
+            'Neutral',
+            `Spot ($${spot.toFixed(2)}) is safely inside Put Wall ($${putWall.toFixed(1)}) and Call Wall ($${callWall.toFixed(1)}). Positive Gamma suppresses volatility.`,
+            `30 - 45 DTE (${dte30})`,
+            `Sell $${putWall.toFixed(0)} Put & Sell $${callWall.toFixed(0)} Call (Iron Condor)`,
+            `Est. Credit: $${estCredit}`,
+            `Exit @ $${tpVal} (50% Max Profit)`,
+            `Stop @ Daily Close Beyond Wall`,
+            `Sell Iron Condor. Close at 50% max profit. Hard stop loss if either GEX Wall is breached on a daily closing basis.`
+        );
+    }
+
+    // 10. Max Gamma Exhaustion
+    if (Math.abs(spot - maxGamma) <= threshold) {
+        const estDebit = (strikeWidth * 0.35).toFixed(2);
+        const tpVal = (strikeWidth * 0.35 * 2.0).toFixed(2);
+        const stopVal = (strikeWidth * 0.35 * 0.50).toFixed(2);
+        html += buildPlayCard(
+            'bearish',
+            'Max Gamma Trend Exhaustion',
+            '<i class="fa-solid fa-tornado" style="color: #f59e0b;"></i>',
+            'Reversal',
+            `Spot ($${spot.toFixed(2)}) is testing Max Gamma strike ($${maxGamma.toFixed(1)}). High probability of mean-reversion exhaustion.`,
+            `7 - 14 DTE (${dte7})`,
+            `Buy $${atmStrike} Put / Sell $${atmStrike - strikeWidth} Put`,
+            `Est. Debit: $${estDebit}`,
+            `Target Sale: $${tpVal} (+100% Gain)`,
+            `Stop Sale: $${stopVal} (-50% Loss)`,
+            `Buy Reversal Put Debit Spread. Exit on mean-reversion pull-back towards GEX Flip ($${flip.toFixed(1)}).`
+        );
+    }
+
+    // Fallback if no specific setup triggered
+    if (count === 0 || html === '') {
+        const estCredit = (strikeWidth * 0.25).toFixed(2);
+        html = buildPlayCard(
+            'neutral',
+            'Structural Mean Reversion Monitoring',
+            '<i class="fa-solid fa-circle-nodes" style="color: var(--color-accent);"></i>',
+            'Standby',
+            `Spot price ($${spot.toFixed(2)}) is currently in a neutral GEX zone between Put Wall ($${putWall.toFixed(1)}) and Call Wall ($${callWall.toFixed(1)}).`,
+            `15 - 30 DTE (${dte15})`,
+            `Put Wall ($${putWall.toFixed(0)}) / Call Wall ($${callWall.toFixed(0)}) Spreads`,
+            `Est. Credit: $${estCredit}`,
+            `Target 75% Credit Decay`,
+            `Stop @ Wall Invalidation`,
+            `Stand by. Monitor price action proximity to Put Wall ($${putWall.toFixed(1)}), Call Wall ($${callWall.toFixed(1)}), or GEX Flip ($${flip.toFixed(1)}) for active entries.`
+        );
+    }
+
+    if (gexContainer) gexContainer.innerHTML = html;
+    if (ofContainer) ofContainer.innerHTML = html;
 }
 
 // --- TAB 6: Order Flow Execution Engine ---
@@ -2327,6 +2454,16 @@ function setupOrderFlowControls() {
     }
 }
 
+let isSchwabConfigured = false;
+let isAlpacaConfigured = false;
+
+function updateSimCardVisibility() {
+    const simCard = document.getElementById('of-sim-card');
+    if (simCard && (isSchwabConfigured || isAlpacaConfigured)) {
+        simCard.style.display = 'none';
+    }
+}
+
 // Fetch Schwab authentication and configurations status
 function checkSchwabStatus() {
     fetch('/api/schwab/status')
@@ -2340,10 +2477,13 @@ function checkSchwabStatus() {
                 configBadge.textContent = "Configured";
                 configBadge.className = "status-badge status-green";
                 authBtn.removeAttribute('disabled');
+                isSchwabConfigured = true;
+                updateSimCardVisibility();
             } else {
                 configBadge.textContent = "Unconfigured";
                 configBadge.className = "status-badge status-red";
                 authBtn.setAttribute('disabled', 'true');
+                isSchwabConfigured = false;
             }
 
             if (data.authenticated) {
@@ -2412,11 +2552,14 @@ function checkAlpacaStatus() {
                     configBadge.className = "status-badge status-green";
                     if (keyInput) keyInput.value = "••••••••••••••••••••";
                     if (secretInput) secretInput.value = "••••••••••••••••••••";
+                    isAlpacaConfigured = true;
+                    updateSimCardVisibility();
                 } else {
                     configBadge.textContent = "Unconfigured";
                     configBadge.className = "status-badge status-red";
                     if (keyInput) keyInput.value = "";
                     if (secretInput) secretInput.value = "";
+                    isAlpacaConfigured = false;
                 }
             }
         })
