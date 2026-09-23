@@ -1,6 +1,18 @@
-# Institutional Order Flow & GEX Trading Manual
+﻿# Institutional Order Flow & GEX Trading Manual
+**Document Version**: 2.0.0 (Living Cumulative Document)  
+**System Status**: Production / Active  
+**Last Updated**: September 2026 (Release v2.0)  
+**Repository**: [syao385/GammaGexTrading](https://github.com/syao385/GammaGexTrading)  
 
-This manual explains how to combine macro **Options GEX key levels** (support, resistance, and volatility zones) with micro **Order Flow execution metrics** (Footprints, Bookmap Heatmaps, DOM Ladders, and Cumulative Delta) to execute high-probability "sniper" entries and manage risk with minimal drawdown.
+---
+
+## Document Revision & Version Control History
+
+| Version | Date | Author | Description of Changes |
+| :--- | :--- | :--- | :--- |
+| **v1.0.0** | July 2026 | Desk Engineering | Initial manual defining GEX structural barriers and basic order flow principles. |
+| **v1.5.0** | August 2026 | Desk Engineering | Integrated Bookmap Heatmap, Footprint chart with POC, DOM ladder, and Cumulative Delta. |
+| **v2.0.0** | September 2026 | Desk Engineering | **Cumulative Living Release v2.0**: Added Candlestick overlays onto Bookmap canvas; added Volume Profile histogram and level overlays (POC, VAH, VAL); increased right-margin padding to prevent price label cutoff; implemented stacked imbalance zone drawing; integrated resilient WebSocket queue for Schwab and Alpaca; added automatic graceful fallback to simulation mode; and added key-based simulator hiding. |
 
 ---
 
@@ -26,101 +38,104 @@ This manual explains how to combine macro **Options GEX key levels** (support, r
 
 ## 2. Order Flow Component Guide
 
-### A. The Bookmap Heatmap
-The Bookmap canvas displays resting limit order book depth (L2 DOM) scrolling over time, overlaid with executed transactions.
+### A. The Bookmap Heatmap Canvas
+The Bookmap canvas displays resting limit order book depth (L2 DOM) scrolling horizontally across time, overlaid with executed transactions, candlesticks, and volume profiles.
 
-*   **Resting Liquidity Heat:** The background color gradient represents resting limit order size.
+*   **Resting Liquidity Heat:** The background color gradient represents resting limit order size:
     *   **Bright Orange / Yellow Bands:** Large institutional limit orders (walls). These act as price targets or support/resistance blocks.
-    *   **Indigo / Black Zones:** Thin liquidity. Price travels through these areas rapidly.
-*   **Aggressive Execution Bubbles:** Circles represent market orders executing instantly.
+    *   **Indigo / Dark Blue Zones:** Thin liquidity. Price travels through these areas rapidly.
+*   **Aggressive Execution Bubbles:** Circles represent market orders executing instantly:
     *   **Green Bubbles:** Aggressive buying sweeping the offer.
     *   **Red Bubbles:** Aggressive selling hitting the bid.
     *   **Bubble Size:** Scaled logarithmically by transaction size. Massive bubbles indicate block trades from institutional players.
+*   **Candlestick Overlay:** Real-time candlestick bodies and wicks plotted directly on top of the depth heatmap, providing continuous Price Action context.
+*   **Volume Profile Histogram Overlay:** Displays horizontal volume distribution bars anchored to the right axis with Point of Control (**POC**), Value Area High (**VAH**), and Value Area Low (**VAL**).
+*   **Calibrated Right Margin (`padRight`):** Dedicated right padding guarantees price scale badges and current market prices are never clipped.
 
 ### B. The Consolidated Footprint Chart
-The Footprint chart shows a detailed internal breakdown of the buy vs. sell volume traded at every price level inside a specific time bar.
+The Footprint chart shows a detailed internal breakdown of the buy vs. sell volume traded at every price level inside each time bar.
 
-*   **Point of Control (POC - Purple Border):** The price level in a bar containing the **highest total volume**. It acts as the fair-value anchor for that time segment.
-*   **Buying Imbalance (Green Cells):** Triggered when the aggressive ask volume is $\ge 3.5\times$ the diagonal bid volume. Confirms institutional buyers are lifting the offer.
-*   **Selling Imbalance (Red Cells):** Triggered when the aggressive bid volume is $\ge 3.5\times$ the diagonal ask volume. Confirms institutional sellers are hitting the bid.
+*   **Bid / Ask Sub-Boxes:** Volume split rendered as `Bid Volume (Sells) | Ask Volume (Buys)` with tiered background shading (Light, Medium, Dark Red/Green) reflecting volume intensity.
+*   **Point of Control (POC - Purple Border):** The price bucket in a bar containing the **highest total volume**. It acts as the fair-value anchor for that time segment.
+*   **Buying Imbalance (Green Cells):** Triggered when aggressive ask volume is $\ge 3.0\times$ the diagonal bid volume. Confirms institutional buyers are lifting the offer.
+*   **Selling Imbalance (Red Cells):** Triggered when aggressive bid volume is $\ge 3.0\times$ the diagonal ask volume. Confirms institutional sellers are hitting the bid.
+*   **Stacked Imbalance Zones:** When $\ge 2$ consecutive diagonal imbalances occur in the same bar, horizontal shaded bands (Green for Buyside, Red for Sellside) project forward as support/resistance zones.
+*   **Passive Absorption Badges (`ABS`):** High-volume nodes ($> 3\times$ average cell volume) at bar High/Low boundaries highlighted with bold cyan/magenta borders and `ABS` badges, signaling institutional absorption.
+*   **Net Delta Footers:** Quantitative net delta (`Ask Vol - Bid Vol`) printed at the base of every footprint column.
 
-### C. The Cumulative Delta Sub-Chart
-The Cumulative Delta line chart is a running session calculation of:
+### C. The Cumulative Delta Sub-Chart & MLOFI
+Running session calculation of aggressive market orders:
 $$\text{Cumulative Delta} = \sum (\text{Aggressive Buy Volume} - \text{Aggressive Sell Volume})$$
 
 *   **Upward Trend:** Aggressive buyers are driving the auction.
 *   **Downward Trend:** Aggressive sellers are driving the auction.
-*   **Divergence:** If price makes a new low but the Cumulative Delta line makes a higher low (Bullish Divergence), it indicates short sellers are hitting passive limit bids and exhausting themselves, signaling a reversal.
+*   **Bullish Divergence:** Price makes a lower low while Cumulative Delta makes a higher low $\rightarrow$ sellers are exhausting themselves into passive limit bids.
+*   **Bearish Divergence:** Price makes a higher high while Cumulative Delta makes a lower high $\rightarrow$ buyers are exhausting themselves into passive limit asks.
+*   **MLOFI (Modified Limit Order Flow Imbalance):** Secondary orange line tracking the velocity of resting limit orders stacking vs. pulling.
 
-### D. The DOM (Depth of Market) Ladder
-A vertical grid displaying currently queued bids (left) and asks (right) centered around the last traded price. Allows you to monitor order cancellations, additions, and spoofing attempts.
+### D. The DOM (Depth of Market) Ladder & Center of Gravity (CoG)
+Vertical grid displaying queued bids (left) and asks (right) centered around the last traded price.
+*   **Center of Gravity (CoG):** Volume-weighted average price of resting liquidity:
+    $$\text{CoG} = \frac{\sum (Price \cdot Size)}{\sum Size}$$
+    Rendered as green (Bid CoG) and red (Ask CoG) dotted lines tracking dynamic liquidity shelves.
 
 ---
 
 ## 3. High-Probability Trading Setups
 
-Use the **Offline Scenario Simulator** inside your desk to practice these plays:
-
 ### Setup 1: Absorption at the Put Wall (Reversal Setup)
-
-Use this setup to buy support bounces with extremely tight risk parameters.
-
 ```
  Price Path:  =====================\               /===========> (Long Entry)
                                     \  Absorption /
- Put Wall GEX: ----------------------*----*---*---*-----------------------
- Limit Bids:   [ Bright Orange Band (Resting Buy Blocks) ]
- Executions:                         [ Large Red Bubbles (Aggressive Sells) ]
+                                     \=====v=====/
+------------------------------------- Put Wall (Support) -----------------------------------
 ```
+*   **Pre-Condition:** Spot approaches the Put Wall in a positive gamma regime.
+*   **Order Flow Trigger:**
+    1. Large red execution bubbles print on Bookmap into the wall, but price stalls.
+    2. Footprint displays a selling imbalance with an `ABS` badge at the bottom wick.
+    3. DOM Bid CoG flattens and rises, confirming buyers are stepping in.
+*   **Execution:** Enter **Bull Put Credit Spread** (Sell ATM Put, Buy $1–$2 OTM Put).
+*   **Stop Loss:** 1 tick below the lowest footprint absorption wick.
 
-1.  **Macro Context:** Price declines towards the **Put Wall**. Options dealers are heavily long puts here and are structurally forced to buy the underlying stock to maintain delta neutrality.
-2.  **Order Flow Confluence:**
-    *   **Heatmap:** A thick, bright orange band representing large resting limit bids stacks at the Put Wall.
-    *   **Bubbles:** Price hits the Put Wall, triggering large **Red execution bubbles** (market orders selling).
-    *   **Price Action:** The price refuses to tick lower despite the high-volume selling. This is **Absorption**—passive institutional buy orders are swallowing the aggressive market sells.
-    *   **Cumulative Delta:** The Delta line flattens out or begins diverging upwards.
-    *   **Footprint:** Green cells (Buying Imbalances) print as price ticks up away from the wall.
-3.  **Trade Execution:**
-    *   **Trigger:** Enter **Long** (or buy Call options) when selling volume exhausts and green buying imbalances start ticking upwards.
-    *   **Stop-Loss:** Place your stop-loss **3 to 5 cents** below the Put Wall. If the Put Wall breaks, the thesis is immediately invalidated, allowing you to exit with a minimal loss.
-    *   **Target:** The GEX Flip Level or the next key liquidity band.
+### Setup 2: Momentum Sweep at the GEX Flip (Breakout Setup)
+```
+                                                  /============> (Long Breakout)
+                                                 /
+------------------------------------- GEX Flip Level ---------------------------------------
+                                         / (Sweep)
+ Price Path:  ==========================/
+```
+*   **Pre-Condition:** Spot crosses above the Gamma Flip point into a positive gamma squeeze or below into negative gamma acceleration.
+*   **Order Flow Trigger:**
+    1. DOM Ask orders ahead of price cancel rapidly (liquidity pulling).
+    2. Cumulative Delta spikes aggressively in the direction of the break.
+    3. Footprint prints a **stacked buying imbalance ($\ge 2$ consecutive green levels)**.
+*   **Execution:** Enter **Bull Call Debit Spread** (Buy ATM Call, Sell $2–$3 OTM Call).
+*   **Stop Loss:** Cross back across the GEX Flip level with negative delta.
+
+### Setup 3: Exhaustion Rejection at the Call Wall (Sonar Divergence)
+*   **Pre-Condition:** Spot runs into the Call Wall or Max Gamma strike.
+*   **Order Flow Trigger:**
+    1. Massive green bubbles print on Bookmap, but price cannot advance.
+    2. Sonar Pulse warning flashes on screen (Sonar ratio $< 0.15$).
+    3. Footprint bar closes red with an absorption badge at the high.
+*   **Execution:** Enter **Bear Call Credit Spread** or buy short-term **OTM Puts**.
+*   **Stop Loss:** 1 tick above the resting Call Wall block.
 
 ---
 
-### Setup 2: Momentum Breakout at the GEX Flip Level (Breakout Setup)
+## 4. Live Streaming Architecture & Operational Controls
 
-Use this setup to trade trend continuations when shifting volatility regimes.
+### A. Resilient Upstream Queuing
+The backend WebSocket proxy (`/api/orderflow/live`) implements an internal asynchronous message queue (`asyncio.Queue(maxsize=1000)`). High-frequency market bursts from Charles Schwab or Alpaca are buffered smoothly, eliminating dropped frames and browser rendering locks.
 
-```
- GEX Flip Level: ---------------------[ Resting Ask Liquidity Pulls / Disappears ]
- Breakout Point: --------------------------------*-----> (Momentum Long Entry)
- Executions:                                     [ Large Green Bubbles Sweep Ask ]
- Footprint:                                      [ Stacked Green Imbalances ]
-```
+### B. Automatic Simulation Fallback
+If Charles Schwab or Alpaca credentials are not configured, expired, or rejected during handshakes, the streamer automatically transitions to High-Fidelity Simulation mode without throwing unhandled exceptions.
 
-1.  **Macro Context:** Price approaches the **GEX Flip Level** from below. Below this level, the market is in a Negative Gamma regime (dealers sell on drops and buy on rises, accelerating volatility). Above it, dealers enter Positive Gamma (hedging dampens volatility). Breaking above forces a dealer short-covering squeeze.
-2.  **Order Flow Confluence:**
-    *   **Heatmap:** Resting ask limit orders stacked at the GEX Flip level suddenly vanish or turn dark blue. This is **Liquidity Pulling** (sellers clearing their offers, anticipating a breakout).
-    *   **Bubbles:** Massive **Green execution bubbles** sweep through the Flip Level.
-    *   **Footprint:** Stacked diagonal **Green Buying Imbalances** appear across 3 or more consecutive price bins.
-    *   **Delta:** The Cumulative Delta line surges vertically.
-3.  **Trade Execution:**
-    *   **Trigger:** Enter **Long** (or buy ATM Calls) on the first 1-minute close above the GEX Flip Level supported by buying imbalances.
-    *   **Stop-Loss:** Place your stop-loss just below the GEX Flip Level.
-    *   **Target:** The GEX Call Wall.
+### C. Automatic Simulator Visibility Toggle
+- **No Keys Configured**: Simulator control bar is visible for offline training and scenario analysis.
+- **Keys Configured**: Simulator control bar is automatically hidden, ensuring an unobstructed institutional cockpit.
 
----
-
-## 4. UI Control Guidelines
-
-To get the most out of your Order Flow dashboard, customize the panels based on current volatility:
-
-*   **Tick Consolidation Dropdown:** 
-    *   Use `0.05` for fine price action detailing on individual equities (AAPL, NVDA).
-    *   Use `0.25` or `0.50` on QQQ/SPY to group fragmented price levels into consolidated blocks.
-*   **Heatmap Contrast Slider:**
-    *   Adjust to screen out noise. A setting of `35% - 50%` is recommended. This filters out retail limit orders under 200 contracts and highlights major institutional size ($1,000+$ contracts).
-*   **Trade Bubble Scale Slider:**
-    *   If bubbles overlap and block your view of the price line during high volume, slide the scale down to `1.5x` or `2.0x`. Set to `3.0x` when volume is low to highlight block executions.
-*   **Toggle Delta Chart Button:**
-    *   Keep the delta panel visible to monitor divergences. Collapse it only if you need more vertical screen space for the Bookmap timeline.
+### D. Dynamic Symbol Re-Subscription
+Changing the active ticker in the global search instantly re-subscribes the live stream to the new symbol without requiring a manual page refresh.

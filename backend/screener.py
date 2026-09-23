@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from datetime import datetime, timedelta, timezone
 
 from backend.data_fetcher import DataFetcher
 from backend.gex_engine import GEXEngine
@@ -15,6 +16,28 @@ class MarketScreener:
     def __init__(self):
         self.fetcher = DataFetcher()
         self.engine = GEXEngine()
+        self._hist_cache = {}
+
+    def get_cached_hist(self, symbol: str, period: str, interval: str = "1d") -> pd.DataFrame:
+        """Fetches historical price data with 60-second in-memory caching."""
+        cache_key = f"{symbol}_{period}_{interval}"
+        now = datetime.now()
+        if cache_key in self._hist_cache:
+            df, ts = self._hist_cache[cache_key]
+            if (now - ts).total_seconds() < 60:
+                return df
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=interval)
+            if not df.empty:
+                self._hist_cache[cache_key] = (df, now)
+                return df
+        except Exception as e:
+            logger.warning(f"get_cached_hist failed for {symbol} ({period}, {interval}): {e}")
+            if cache_key in self._hist_cache:
+                df, _ = self._hist_cache[cache_key]
+                return df
+        return pd.DataFrame()
 
     def screen_symbols(self, symbols: list = None) -> list:
         """
@@ -54,18 +77,19 @@ class MarketScreener:
                 # Generate Alerts & Setups list
                 alerts = []
                 setups_triggered = []
+                setup_timestamp = ""
                 
                 # 1. Fetch Daily History (for 25-day, 60-day Volume Profiles & basic technical filters)
                 hist = pd.DataFrame()
                 try:
-                    hist = yf.Ticker(symbol).history(period="60d")
+                    hist = self.get_cached_hist(symbol, period="60d", interval="1d")
                 except Exception as hist_err:
                     logger.warning(f"Screener: failed to fetch daily history for {symbol}: {hist_err}")
                 
                 # 2. Fetch Intraday 5-minute History (for 5-day Volume Profile, FVG, & Breaker detection)
                 hist_5m = pd.DataFrame()
                 try:
-                    hist_5m = yf.Ticker(symbol).history(period="5d", interval="5m")
+                    hist_5m = self.get_cached_hist(symbol, period="5d", interval="5m")
                 except Exception as h5m_err:
                     logger.warning(f"Screener: failed to fetch 5m history for {symbol}: {h5m_err}")
 

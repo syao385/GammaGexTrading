@@ -205,19 +205,28 @@ def query_liquid_universe(setup_filter: str = None, min_price: float = 10.0, lim
                 setup_filter = setup_filter.lower().strip()
                 matches_filter = False
                 for alert in alerts:
-                    if setup_filter == 'vcp' and 'vcp' in alert.lower():
+                    al = alert.lower()
+                    if setup_filter == 'vcp' and 'vcp' in al:
                         matches_filter = True
-                    elif setup_filter == 'breakout' and 'breakout' in alert.lower():
+                    elif setup_filter == 'breakout' and 'breakout' in al:
                         matches_filter = True
-                    elif setup_filter == 'trend_continuation' and ('trend' in alert.lower() or 'continuation' in alert.lower()):
+                    elif setup_filter == 'trend_continuation' and ('trend' in al or 'continuation' in al):
                         matches_filter = True
-                    elif setup_filter == 'mean_reversion' and ('mean' in alert.lower() or 'reversion' in alert.lower() or 'wall proximity' in alert.lower()):
+                    elif setup_filter == 'mean_reversion' and ('mean' in al or 'reversion' in al or 'wall' in al):
                         matches_filter = True
-                    elif setup_filter == 'unusual_volume' and ('volume' in alert.lower() or 'vol' in alert.lower() or 'sweep' in alert.lower()):
+                    elif setup_filter == 'unusual_volume' and ('volume' in al or 'vol' in al or 'rvol' in al):
                         matches_filter = True
-                    elif setup_filter == 'breaker' and 'breaker' in alert.lower():
+                    elif setup_filter == 'breaker' and 'breaker' in al:
                         matches_filter = True
-                    elif setup_filter == 'fvg' and 'fvg' in alert.lower():
+                    elif setup_filter == 'fvg' and 'fvg' in al:
+                        matches_filter = True
+                    elif setup_filter == 'gex_squeeze' and ('squeeze' in al or 'flip' in al or 'gamma' in al):
+                        matches_filter = True
+                    elif setup_filter == 'put_bounce' and ('put' in al or 'support' in al):
+                        matches_filter = True
+                    elif setup_filter == 'call_resistance' and ('call' in al or 'resistance' in al):
+                        matches_filter = True
+                    elif setup_filter == 'uoa' and ('uoa' in al or 'sweep' in al):
                         matches_filter = True
                     
                 if not matches_filter:

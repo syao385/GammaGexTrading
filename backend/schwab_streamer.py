@@ -248,83 +248,99 @@ async def run_schwab_ws_proxy(symbol: str, message_handler: Callable[[str], None
     """
     Subscribes to Schwab's streaming services, receives ticks, and forwards
     them to frontend clients via the message_handler callback.
+    Includes auto-reconnection with automatic token refresh on disconnects.
     """
-    info = await schwab_manager.get_streamer_info()
-    if not info or "streamerInfo" not in info or not info["streamerInfo"]:
-        logger.error("Could not obtain Schwab streaming credentials.")
-        message_handler(json.dumps({"error": "Auth credentials expired. Re-authenticate via Settings."}))
-        return
+    retry_delay = 2.0
+    while not stop_event.is_set():
+        info = await schwab_manager.get_streamer_info()
+        if not info or "streamerInfo" not in info or not info["streamerInfo"]:
+            logger.error("Could not obtain Schwab streaming credentials.")
+            message_handler(json.dumps({"error": "Auth credentials expired or missing. Re-authenticate via Settings."}))
+            # Wait before retrying in case user re-authenticates
+            for _ in range(int(retry_delay)):
+                if stop_event.is_set():
+                    return
+                await asyncio.sleep(1.0)
+            retry_delay = min(retry_delay * 1.5, 15.0)
+            continue
 
-    streamer_data = info["streamerInfo"][0]
-    socket_url = f"wss://{streamer_data['streamerSocketUrl']}/ws"
-    
-    logger.info(f"Opening Schwab WebSocket connection to: {socket_url}")
-    
-    try:
-        async with websockets.connect(socket_url) as ws:
-            # 1. Send Login Payload
-            login_request = {
-                "requests": [{
-                    "service": "ADMIN",
-                    "requestid": "1",
-                    "command": "LOGIN",
-                    "parameters": {
-                        "credential": streamer_data["token"],
-                        "token": streamer_data["token"],
-                        "appId": "GammaGexTradingDesk"
-                    }
-                }]
-            }
-            await ws.send(json.dumps(login_request))
-            login_response = await ws.recv()
-            logger.info(f"Schwab WS login response received: {login_response}")
-
-            # 2. Subscribe to Trades (L1) and Book depth (L2)
-            sub_request = {
-                "requests": [
-                    {
-                        "service": "LEVELONE_EQUITIES",
-                        "requestid": "2",
-                        "command": "ADD",
+        streamer_data = info["streamerInfo"][0]
+        socket_url = f"wss://{streamer_data['streamerSocketUrl']}/ws"
+        
+        logger.info(f"Opening Schwab WebSocket connection to: {socket_url}")
+        
+        try:
+            async with websockets.connect(socket_url, ping_interval=20, ping_timeout=20) as ws:
+                # Reset retry delay on successful connection
+                retry_delay = 2.0
+                
+                # 1. Send Login Payload
+                login_request = {
+                    "requests": [{
+                        "service": "ADMIN",
+                        "requestid": "1",
+                        "command": "LOGIN",
                         "parameters": {
-                            "keys": symbol.upper(),
-                            # Fields: 0=Symbol, 1=Bid Price, 2=Ask Price, 3=Last Price, 4=Last Size, 5=Volume, 9=Trade Time
-                            "fields": "0,1,2,3,4,5,9"
+                            "credential": streamer_data["token"],
+                            "token": streamer_data["token"],
+                            "appId": "GammaGexTradingDesk"
                         }
-                    },
-                    {
-                        "service": "NASDAQ_BOOK",
-                        "requestid": "3",
-                        "command": "ADD",
-                        "parameters": {
-                            "keys": symbol.upper(),
-                            # Fields: 0=Symbol, 1=Book Details
-                            "fields": "0,1"
-                        }
-                    }
-                ]
-            }
-            await ws.send(json.dumps(sub_request))
-            logger.info(f"Sent Schwab subscription request for {symbol}.")
+                    }]
+                }
+                await ws.send(json.dumps(login_request))
+                login_response = await ws.recv()
+                logger.info(f"Schwab WS login response received: {login_response}")
 
-            # 3. Stream Reading Loop
-            while not stop_event.is_set():
-                try:
-                    # Non-blocking wait with timeout to check stop_event
-                    message = await asyncio.wait_for(ws.recv(), timeout=1.0)
-                    parsed = json.loads(message)
-                    
-                    # Log ticks briefly in server console
-                    logger.debug(f"Schwab Tick received: {parsed}")
-                    
-                    # Forward the message to the frontend websocket handler
-                    message_handler(json.dumps({"source": "schwab", "data": parsed}))
-                except asyncio.TimeoutError:
-                    continue
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning("Schwab WebSocket connection closed.")
-                    message_handler(json.dumps({"error": "Schwab stream closed. Reconnecting..."}))
-                    break
-    except Exception as e:
-        logger.error(f"Schwab WebSocket proxy run failed: {e}")
-        message_handler(json.dumps({"error": f"Failed to connect: {str(e)}"}))
+                # 2. Subscribe to Trades (L1) and Book depth (L2)
+                sub_request = {
+                    "requests": [
+                        {
+                            "service": "LEVELONE_EQUITIES",
+                            "requestid": "2",
+                            "command": "ADD",
+                            "parameters": {
+                                "keys": symbol.upper(),
+                                # Fields: 0=Symbol, 1=Bid Price, 2=Ask Price, 3=Last Price, 4=Last Size, 5=Volume, 9=Trade Time
+                                "fields": "0,1,2,3,4,5,9"
+                            }
+                        },
+                        {
+                            "service": "NASDAQ_BOOK",
+                            "requestid": "3",
+                            "command": "ADD",
+                            "parameters": {
+                                "keys": symbol.upper(),
+                                # Fields: 0=Symbol, 1=Book Details
+                                "fields": "0,1"
+                            }
+                        }
+                    ]
+                }
+                await ws.send(json.dumps(sub_request))
+                logger.info(f"Sent Schwab subscription request for {symbol}.")
+
+                # 3. Stream Reading Loop
+                while not stop_event.is_set():
+                    try:
+                        # Non-blocking wait with timeout to check stop_event
+                        message = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                        parsed = json.loads(message)
+                        
+                        # Log ticks briefly in server console
+                        logger.debug(f"Schwab Tick received: {parsed}")
+                        
+                        # Forward the message to the frontend websocket handler
+                        message_handler(json.dumps({"source": "schwab", "data": parsed}))
+                    except asyncio.TimeoutError:
+                        continue
+                    except websockets.exceptions.ConnectionClosed:
+                        logger.warning("Schwab WebSocket connection closed upstream. Reconnecting...")
+                        message_handler(json.dumps({"info": "Schwab stream connection blip. Reconnecting automatically..."}))
+                        break
+        except Exception as e:
+            if stop_event.is_set():
+                break
+            logger.error(f"Schwab WebSocket proxy run exception: {e}")
+            message_handler(json.dumps({"info": f"Connection lost ({str(e)}). Retrying..."}))
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 1.5, 15.0)

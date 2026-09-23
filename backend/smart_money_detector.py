@@ -21,56 +21,51 @@ class SmartMoneyDetector:
         
         start_idx = max(2, len(df) - lookback)
         
-        # Scan for FVG formations
-        for i in range(start_idx, len(df)):
-            c1_high, c1_low = float(highs[i-2]), float(lows[i-2])
+        # Scan for FVG and Price Gap formations
+        seen_gaps = set()
+        for i in range(1, len(df)):
+            high_prev1, low_prev1 = float(highs[i-1]), float(lows[i-1])
             c3_high, c3_low = float(highs[i]), float(lows[i])
             
-            # Bullish FVG: Candle 1 High < Candle 3 Low
-            if c1_high < c3_low:
-                fvg_top = c3_low
-                fvg_bottom = c1_high
+            gaps = []
+            # 2-candle gap
+            if c3_low > high_prev1:
+                gaps.append(("bullish", high_prev1, c3_low, i))
+            elif c3_high < low_prev1:
+                gaps.append(("bearish", c3_high, low_prev1, i))
                 
-                # Check subsequent price action to see if FVG is filled or inverted
-                state = "active"
-                for j in range(i + 1, len(df)):
-                    # If any candle closes below the bottom of the FVG, it is breached and becomes inverted
-                    if closes[j] < fvg_bottom:
-                        state = "inverted"
-                    # If a candle high/low completely swallows the gap, and it is not inverted, we check if it is filled
-                    if lows[j] <= fvg_bottom and state == "active":
-                        # Partially or fully filled. If low is below bottom, it's fully filled (inactive)
-                        state = "filled"
-                
-                if state in ["active", "inverted"]:
-                    fvgs.append({
-                        "type": "bullish",
-                        "top": fvg_top,
-                        "bottom": fvg_bottom,
-                        "state": state,  # active (support) or inverted (resistance)
-                        "index": i - 1
-                    })
+            # 3-candle FVG
+            if i >= 2:
+                c1_high, c1_low = float(highs[i-2]), float(lows[i-2])
+                if c3_low > c1_high:
+                    gaps.append(("bullish", c1_high, c3_low, i))
+                elif c3_high < c1_low:
+                    gaps.append(("bearish", c3_high, c1_low, i))
                     
-            # Bearish FVG: Candle 1 Low > Candle 3 High
-            elif c1_low > c3_high:
-                fvg_top = c1_low
-                fvg_bottom = c3_high
-                
+            for gtype, fvg_bottom, fvg_top, candle_idx in gaps:
+                key = (gtype, round(fvg_bottom, 2), round(fvg_top, 2))
+                if key in seen_gaps:
+                    continue
+                    
+                # Mitigation check: ONLY mitigated if candle CLOSE passes through the gap
                 state = "active"
-                for j in range(i + 1, len(df)):
-                    # If any candle closes above the top of the FVG, it becomes inverted
-                    if closes[j] > fvg_top:
-                        state = "inverted"
-                    if highs[j] >= fvg_top and state == "active":
+                for j in range(candle_idx + 1, len(df)):
+                    c_close = float(closes[j])
+                    if gtype == "bullish" and c_close < fvg_bottom:
                         state = "filled"
+                        break
+                    elif gtype == "bearish" and c_close > fvg_top:
+                        state = "filled"
+                        break
                         
-                if state in ["active", "inverted"]:
+                if state == "active":
+                    seen_gaps.add(key)
                     fvgs.append({
-                        "type": "bearish",
+                        "type": gtype,
                         "top": fvg_top,
                         "bottom": fvg_bottom,
-                        "state": state,  # active (resistance) or inverted (support)
-                        "index": i - 1
+                        "state": "active",
+                        "index": candle_idx - 1
                     })
                     
         return fvgs

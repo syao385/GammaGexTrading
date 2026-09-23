@@ -1265,11 +1265,12 @@ tr:hover td {
     display: grid;
     grid-template-columns: 1fr 280px;
     gap: 24px;
-    min-height: 480px;
+    min-height: 550px;
 }
 
 .footprint-chart-panel {
-    height: 100%;
+    height: 580px;
+    min-height: 550px;
     display: flex;
     flex-direction: column;
 }
@@ -1344,13 +1345,56 @@ tr:hover td {
 }
 
 .bookmap-heatmap-panel {
-    min-height: 250px;
+    min-height: 520px;
     flex-grow: 1;
+}
+
+/* --- Subtab Pills Navigation --- */
+.sub-tab-pills {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+.subtab-pill {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.subtab-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.subtab-pill.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+}
+
+.subtab-content {
+    display: none;
+}
+
+.subtab-content.active {
+    display: block;
 }
 
 .canvas-wrapper {
     position: relative;
     flex-grow: 1;
+    height: 480px;
+    min-height: 460px;
     width: 100%;
     background-color: rgba(5, 7, 18, 0.95);
     border-radius: 8px;
@@ -1407,6 +1451,16 @@ tr:hover td {
 .poc-bg {
     border: 2px solid #a855f7;
     background-color: rgba(168, 85, 247, 0.15);
+}
+
+.stacked-bg {
+    border: 1px dashed #10b981;
+    background-color: rgba(16, 185, 129, 0.25);
+}
+
+.abs-bg {
+    border: 2px solid #00e1ff;
+    background-color: rgba(0, 225, 255, 0.2);
 }
 
 .simulator-controls-buttons {

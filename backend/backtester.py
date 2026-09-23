@@ -111,170 +111,211 @@ class Backtester:
             call_wall = float(row['call_wall_proxy'])
             put_wall = float(row['put_wall_proxy'])
             
+            # Determine asset class mode: 'cash' vs 'options'
+            asset_class = str(params.get('asset_class', 'cash')).lower()
+            opt_leverage = 4.0 if asset_class == 'options' else 1.0
+
             # Stop loss logic if in a trade
             if position > 0:
                 # Long position stop loss check
                 if low <= entry_price * (1 - stop_loss_pct):
-                    # Stopped out at stop loss price
                     exit_p = entry_price * (1 - stop_loss_pct)
-                    capital = position * exit_p
+                    ret_pct = -stop_loss_pct * 100.0 * opt_leverage
+                    if asset_class == 'options':
+                        ret_pct = max(-50.0, ret_pct)
+                    profit = capital * (ret_pct / 100.0)
+                    capital += profit
                     trades.append({
-                        'type': 'Stop Loss Long',
+                        'type': f'Stop Loss Long ({asset_class.upper()})',
                         'entry_date': last_entry_date.strftime('%Y-%m-%d'),
                         'exit_date': current_date.strftime('%Y-%m-%d'),
                         'entry_price': entry_price,
                         'exit_price': exit_p,
-                        'return_pct': -stop_loss_pct * 100,
-                        'profit': (exit_p - entry_price) * position
+                        'return_pct': float(ret_pct),
+                        'profit': float(profit)
                     })
                     position = 0.0
             elif position < 0:
                 # Short position stop loss check
                 if high >= entry_price * (1 + stop_loss_pct):
-                    # Stopped out
                     exit_p = entry_price * (1 + stop_loss_pct)
-                    loss = (entry_price - exit_p) * abs(position)
-                    capital += loss
+                    ret_pct = -stop_loss_pct * 100.0 * opt_leverage
+                    if asset_class == 'options':
+                        ret_pct = max(-50.0, ret_pct)
+                    profit = capital * (ret_pct / 100.0)
+                    capital += profit
                     trades.append({
-                        'type': 'Stop Loss Short',
+                        'type': f'Stop Loss Short ({asset_class.upper()})',
                         'entry_date': last_entry_date.strftime('%Y-%m-%d'),
                         'exit_date': current_date.strftime('%Y-%m-%d'),
                         'entry_price': entry_price,
                         'exit_price': exit_p,
-                        'return_pct': -stop_loss_pct * 100,
-                        'profit': loss
+                        'return_pct': float(ret_pct),
+                        'profit': float(profit)
                     })
                     position = 0.0
 
-            # Strategy Implementation
-            if strategy.lower() == 'gex_flip':
-                # BUY when GEX > threshold, SHORT when GEX < -threshold
+            # Strategy Implementation for all 11 Playbooks + Legacy Aliases
+            strat = strategy.lower()
+
+            # Helper for exit trade logging
+            def close_trade(exit_type, exit_p, is_long):
+                nonlocal capital, position
+                eq_ret = ((exit_p - entry_price) / entry_price) * 100.0 if is_long else ((entry_price - exit_p) / entry_price) * 100.0
+                ret_pct = eq_ret * opt_leverage
+                if asset_class == 'options':
+                    ret_pct = min(100.0, max(-50.0, ret_pct))
+                trade_profit = capital * (ret_pct / 100.0)
+                capital += trade_profit
+                trades.append({
+                    'type': f'{exit_type} ({asset_class.upper()})',
+                    'entry_date': last_entry_date.strftime('%Y-%m-%d'),
+                    'exit_date': current_date.strftime('%Y-%m-%d'),
+                    'entry_price': entry_price,
+                    'exit_price': exit_p,
+                    'return_pct': float(ret_pct),
+                    'profit': float(trade_profit)
+                })
+                position = 0.0
+
+            if strat in ['put_wall_bounce', 'wall_reversion']:
+                if position == 0:
+                    if low <= put_wall * 1.005:
+                        position = 1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position > 0:
+                    days_held = (current_date - last_entry_date).days
+                    if close >= entry_price * 1.02 or days_held >= 5:
+                        close_trade('Put Wall Bounce Exit', close, True)
+
+            elif strat == 'call_wall_reversal':
+                if position == 0:
+                    if high >= call_wall * 0.995:
+                        position = -1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position < 0:
+                    days_held = (current_date - last_entry_date).days
+                    if close <= entry_price * 0.98 or days_held >= 5:
+                        close_trade('Call Wall Reversal Exit', close, False)
+
+            elif strat in ['gex_flip_squeeze', 'gex_flip']:
                 if position == 0:
                     if gex > gex_threshold:
-                        # Enter Long
-                        position = capital / close
+                        position = 1.0
                         entry_price = close
                         last_entry_date = current_date
-                    elif gex < -gex_threshold:
-                        # Enter Short
-                        position = -capital / close
+                elif position > 0:
+                    if gex < 0 or close >= entry_price * 1.03:
+                        close_trade('GEX Flip Squeeze Exit', close, True)
+
+            elif strat == 'gex_flip_breakdown':
+                if position == 0:
+                    if gex < -gex_threshold:
+                        position = -1.0
                         entry_price = close
                         last_entry_date = current_date
-                elif position > 0 and gex < 0:
-                    # Close Long, potentially flip short
-                    capital = position * close
-                    trades.append({
-                        'type': 'Long Exit (GEX Flip)',
-                        'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                        'exit_date': current_date.strftime('%Y-%m-%d'),
-                        'entry_price': entry_price,
-                        'exit_price': close,
-                        'return_pct': ((close - entry_price) / entry_price) * 100,
-                        'profit': (close - entry_price) * position
-                    })
-                    position = 0.0
-                elif position < 0 and gex > 0:
-                    # Close Short
-                    loss = (entry_price - close) * abs(position)
-                    capital += loss
-                    trades.append({
-                        'type': 'Short Exit (GEX Flip)',
-                        'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                        'exit_date': current_date.strftime('%Y-%m-%d'),
-                        'entry_price': entry_price,
-                        'exit_price': close,
-                        'return_pct': ((entry_price - close) / entry_price) * 100,
-                        'profit': loss
-                    })
-                    position = 0.0
-                    
-            elif strategy.lower() == 'ovi_breakout':
-                # BUY on 20-day high breakout + positive OVI
-                # SHORT on 20-day low breakdown + negative OVI
+                elif position < 0:
+                    if gex > 0 or close <= entry_price * 0.97:
+                        close_trade('GEX Flip Breakdown Exit', close, False)
+
+            elif strat == 'vcp_accumulation':
+                if position == 0:
+                    if gex > 0 and close > row['ema']:
+                        position = 1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position > 0:
+                    days_held = (current_date - last_entry_date).days
+                    if close >= entry_price * 1.04 or close < row['ema'] or days_held >= 8:
+                        close_trade('VCP Accumulation Exit', close, True)
+
+            elif strat == 'fvg_fill':
+                if position == 0:
+                    if low <= put_wall * 1.01:
+                        position = 1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                    elif high >= call_wall * 0.99:
+                        position = -1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position > 0:
+                    if close >= entry_price * 1.02:
+                        close_trade('FVG Bullish Fill Exit', close, True)
+                elif position < 0:
+                    if close <= entry_price * 0.98:
+                        close_trade('FVG Bearish Fill Exit', close, False)
+
+            elif strat == 'breaker_block':
+                if position == 0:
+                    if ovi > ovi_threshold:
+                        position = 1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                    elif ovi < -ovi_threshold:
+                        position = -1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position > 0:
+                    if ovi < 0 or close >= entry_price * 1.025:
+                        close_trade('Breaker Shift Exit Long', close, True)
+                elif position < 0:
+                    if ovi > 0 or close <= entry_price * 0.975:
+                        close_trade('Breaker Shift Exit Short', close, False)
+
+            elif strat in ['rvol_surge', 'ovi_breakout']:
                 if position == 0:
                     if close >= call_wall and ovi > ovi_threshold:
-                        # Enter Long
-                        position = capital / close
+                        position = 1.0
                         entry_price = close
                         last_entry_date = current_date
                     elif close <= put_wall and ovi < -ovi_threshold:
-                        # Enter Short
-                        position = -capital / close
+                        position = -1.0
                         entry_price = close
                         last_entry_date = current_date
                 elif position > 0:
-                    # Exit long when price falls below EMA or OVI goes negative
-                    if close < row['ema'] or ovi < 0:
-                        capital = position * close
-                        trades.append({
-                            'type': 'Long Breakout Exit',
-                            'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                            'exit_date': current_date.strftime('%Y-%m-%d'),
-                            'entry_price': entry_price,
-                            'exit_price': close,
-                            'return_pct': ((close - entry_price) / entry_price) * 100,
-                            'profit': (close - entry_price) * position
-                        })
-                        position = 0.0
+                    if close < row['ema'] or close >= entry_price * 1.03:
+                        close_trade('RVOL Surge Long Exit', close, True)
                 elif position < 0:
-                    # Exit short when price rises above EMA or OVI goes positive
-                    if close > row['ema'] or ovi > 0:
-                        loss = (entry_price - close) * abs(position)
-                        capital += loss
-                        trades.append({
-                            'type': 'Short Breakout Exit',
-                            'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                            'exit_date': current_date.strftime('%Y-%m-%d'),
-                            'entry_price': entry_price,
-                            'exit_price': close,
-                            'return_pct': ((entry_price - close) / entry_price) * 100,
-                            'profit': loss
-                        })
-                        position = 0.0
+                    if close > row['ema'] or close <= entry_price * 0.97:
+                        close_trade('RVOL Surge Short Exit', close, False)
 
-            elif strategy.lower() == 'wall_reversion':
-                # BUY on Put Wall touch (expecting mean-reversion bounce)
-                # SELL SHORT on Call Wall touch (expecting mean-reversion pull-back)
-                # Position is held for a maximum of 5 days or until stopped out/target hit (2% target)
-                target_pct = 0.02
+            elif strat == 'trend_continuation':
                 if position == 0:
-                    if low <= put_wall * 1.002: # Within 0.2% of Put Wall
-                        position = capital / close
-                        entry_price = close
-                        last_entry_date = current_date
-                    elif high >= call_wall * 0.998: # Within 0.2% of Call Wall
-                        position = -capital / close
+                    if close > row['ema'] and gex > 0:
+                        position = 1.0
                         entry_price = close
                         last_entry_date = current_date
                 elif position > 0:
                     days_held = (current_date - last_entry_date).days
-                    if close >= entry_price * (1 + target_pct) or days_held >= 5:
-                        capital = position * close
-                        trades.append({
-                            'type': 'Long Reversion Exit',
-                            'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                            'exit_date': current_date.strftime('%Y-%m-%d'),
-                            'entry_price': entry_price,
-                            'exit_price': close,
-                            'return_pct': ((close - entry_price) / entry_price) * 100,
-                            'profit': (close - entry_price) * position
-                        })
-                        position = 0.0
+                    if close >= entry_price * 1.025 or close < row['ema'] or days_held >= 6:
+                        close_trade('Trend Continuation Exit', close, True)
+
+            elif strat == 'range_condor':
+                if position == 0:
+                    if close > put_wall and close < call_wall:
+                        position = 1.0
+                        entry_price = close
+                        last_entry_date = current_date
+                elif position > 0:
+                    days_held = (current_date - last_entry_date).days
+                    if days_held >= 5 or close <= put_wall or close >= call_wall:
+                        # Neutral range profit if inside walls
+                        exit_price = close if (close > put_wall and close < call_wall) else (entry_price * 0.985)
+                        close_trade('Iron Condor Range Exit', exit_price, True)
+
+            elif strat == 'max_gamma_exhaustion':
+                if position == 0:
+                    if high >= call_wall:
+                        position = -1.0
+                        entry_price = close
+                        last_entry_date = current_date
                 elif position < 0:
                     days_held = (current_date - last_entry_date).days
-                    if close <= entry_price * (1 - target_pct) or days_held >= 5:
-                        loss = (entry_price - close) * abs(position)
-                        capital += loss
-                        trades.append({
-                            'type': 'Short Reversion Exit',
-                            'entry_date': last_entry_date.strftime('%Y-%m-%d'),
-                            'exit_date': current_date.strftime('%Y-%m-%d'),
-                            'entry_price': entry_price,
-                            'exit_price': close,
-                            'return_pct': ((entry_price - close) / entry_price) * 100,
-                            'profit': loss
-                        })
-                        position = 0.0
+                    if close <= entry_price * 0.98 or days_held >= 5:
+                        close_trade('Max Gamma Reversal Exit', close, False)
             
             # Log equity state
             current_equity = capital
